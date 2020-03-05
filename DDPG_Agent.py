@@ -1,13 +1,18 @@
+# !/usr/bin/env python3
+
 import os
 
 import gym
+import gym_SmartLoader.envs
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 from stable_baselines import DDPG
 from stable_baselines.ddpg.policies import MlpPolicy, LnMlpPolicy
-# from stable_baselines.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, AdaptiveParamNoiseSpec
+from stable_baselines.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, AdaptiveParamNoiseSpec
 from stable_baselines.results_plotter import load_results, ts2xy
+from stable_baselines.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines.common.evaluation import evaluate_policy
 from stable_baselines import results_plotter
 from stable_baselines.bench import Monitor
@@ -44,9 +49,8 @@ log_dir = "tmp/"
 os.makedirs(log_dir, exist_ok=True)
 
 # Create and wrap the environment
-# env = gym.make('MountainCarContinuous-v0')
-env = gym.make('MoveRockEnv-v0')
-env = Monitor(env, log_dir, allow_early_resets=True)
+env = gym.make('PickUpEnv-v0')
+env = Monitor(env, log_dir)
 # Automatically normalize the input features
 # env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
 
@@ -62,13 +66,13 @@ model = DDPG(MlpPolicy, env, verbose=2, observation_range=(-5.0,5.0)) # param_no
 # model = DDPG(LnMlpPolicy, env, verbose=2, param_noise=param_noise)
 
 # train
-time_steps = 1e5
+time_steps = 1e6
 model.learn(total_timesteps=int(time_steps), callback=callback)
 # plot results
-results_plotter.plot_results([log_dir], time_steps, results_plotter.X_TIMESTEPS, "DDPG MoveRock")
+results_plotter.plot_results([log_dir], time_steps, results_plotter.X_TIMESTEPS, "DDPG PickUp")
 plt.show()
 # save
-model.save(log_dir + "ddpg_MoveRock")
+model.save(log_dir + "DDPG_PickUp_0503_vecNorm")
 # Don't forget to save the VecNormalize statistics when saving the agent
 # env.save(os.path.join(log_dir, "vec_normalize.pkl"))
 # Evaluate the agent
@@ -79,4 +83,5 @@ obs = env.reset()
 while True:
     action, _states = model.predict(obs)
     obs, rewards, done, info = env.step(action)
-    env.render()
+    if done:
+        obs = env.reset()

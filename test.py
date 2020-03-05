@@ -1,6 +1,6 @@
 import gym
-import envs
+import gym_SmartLoader.envs
 
 env = gym.make('PickUpEnv-v0')
-env.step()
 env.reset()
+# env.step()
