@@ -42,6 +42,7 @@ def callback(_locals, _globals):
                 print("Saving new best model")
                 _locals['self'].save(log_dir + 'best_model.pkl')
     n_steps += 1
+
     return True
 
 # Create log dir
@@ -72,7 +73,7 @@ model.learn(total_timesteps=int(time_steps), callback=callback)
 results_plotter.plot_results([log_dir], time_steps, results_plotter.X_TIMESTEPS, "DDPG PickUp")
 plt.show()
 # save
-model.save(log_dir + "DDPG_PickUp_0503_vecNorm")
+model.save(log_dir + "DDPG_PickUp_0503")
 # Don't forget to save the VecNormalize statistics when saving the agent
 # env.save(os.path.join(log_dir, "vec_normalize.pkl"))
 # Evaluate the agent

@@ -13,6 +13,7 @@ import gym
 #         print("Environment reset")
 
 import sys
+import time
 from src.EpisodeManager import *
 from src.Unity2RealWorld import *
 import gym
@@ -308,11 +309,24 @@ class BaseEnv(gym.Env):
 
         # wait for simulation to set up
         while True: # wait for all topics to arrive
-            # TODO: change to 2*numStones when IsLoaded is fixed
+            # change to 2*numStones when IsLoaded is fixed
             if bool(self.world_state) and bool(self.stones) and len(self.stones) >= self.numStones:
                 break
 
-        # wait for vehicle to arrive to desired position
+        # wait for simulation to stabilize, stones stop moving
+        time.sleep(5)
+        # self.last_stone_pos = {}
+        # static = 0
+        # while True:
+        #     self.current_stone_pos = self.stones
+        #     if bool(self.last_stone_pos):  # don't enter first time when last_stone_height is empty
+        #         # print('current pos = ', self.current_stone_pos, 'last pos =', self.last_stone_pos)
+        #         if self.current_stone_pos == self.last_stone_pos:
+        #             static += 1
+        #     self.last_stone_pos = self.current_stone_pos
+        #     if static > 5000:
+        #         break
+
 
         # get observation from simulation
         obs = self.current_obs()
