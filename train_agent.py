@@ -43,24 +43,31 @@ def save_fn(_locals, _globals):
 
 def main():
     global model, best_model_path, last_model_path
-    env = gym.make('PickUpEnv-v0').unwrapped
+    mission = 'PushStonesEnv' # Change according to algorithm
+    env = gym.make(mission + '-v0').unwrapped
     train_model = True
 
     # Create log dir
-    dir = "stable_bl/"
-    os.makedirs(dir + 'model_dir/sac', exist_ok=True)
+    dir = 'stable_bl/' + mission
+    os.makedirs(dir + '/model_dir/sac', exist_ok=True)
 
     if train_model:
 
         # for k in range(10):
-        # Change according to algorithm
-        tests = os.listdir(dir + 'log_dir/sac')
-        indexes = []
-        for item in tests:
-            indexes.append(int(item[5:]))
-        k = max(indexes) + 1
 
-        model_dir = dir + 'model_dir/sac/test_{}'.format(str(k))
+        # create new folder
+        try:
+            tests = os.listdir(dir + '/log_dir/sac')
+            indexes = []
+            for item in tests:
+                indexes.append(int(item[5:]))
+            k = max(indexes) + 1
+
+        except FileNotFoundError:
+            os.makedirs(dir + '/log_dir/sac')
+            k = 0
+
+        model_dir = dir + '/model_dir/sac/test_{}'.format(str(k))
 
         best_model_path = model_dir
         last_model_path = model_dir
@@ -69,18 +76,31 @@ def main():
 
         # policy_kwargs = dict(layers=[64, 64, 64])
 
-        log_dir = dir + 'log_dir/sac/test_{}'.format(str(k))
+        log_dir = dir + '/log_dir/sac/test_{}'.format(str(k))
         logger.configure(folder=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
 
-        # SAC
-        model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=2e-4, buffer_size=500000,
-             learning_starts=3000, train_freq=16, batch_size=64,
-             tau=0.01, ent_coef='auto', target_update_interval=4,
-             gradient_steps=4, target_entropy='auto', action_noise=None,
-             random_exploration=0.0, verbose=2, tensorboard_log=None,
-             _init_setup_model=True, full_tensorboard_log=False,
-             seed=None, n_cpu_tf_sess=None)
+        # SAC - start learning from scratch
+        # model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=2e-4, buffer_size=500000,
+        #      learning_starts=3000, train_freq=16, batch_size=64,
+        #      tau=0.01, ent_coef='auto', target_update_interval=4,
+        #      gradient_steps=4, target_entropy='auto', action_noise=None,
+        #      random_exploration=0.0, verbose=2, tensorboard_log=None,
+        #      _init_setup_model=True, full_tensorboard_log=False,
+        #      seed=None, n_cpu_tf_sess=None)
 
+        # Load best model and continue learning
+        models = os.listdir(dir + '/model_dir/sac')
+        ind, reward = [], []
+        for model in models:
+            ind.append(model.split('_')[1])
+            reward.append(model.split('_')[3])
+        best_reward = max(reward)
+        best_model_ind = reward.index(best_reward)
+        k = ind[best_model_ind]
+        model = SAC.load(dir + 'model_dir/sac/test_' + k + '_rew_' + best_reward, env=env,
+                         custom_objects=dict(learning_starts=0))
+
+        # learn
         model.learn(total_timesteps=num_timesteps, callback=save_fn)
 
         # PPO1
@@ -95,8 +115,8 @@ def main():
         # model.save(log_dir)
 
     else:
-        env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + 'model_dir/sac/test_', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        # env = gym.make('PickUpEnv-v0')
+        model = SAC.load(dir + '/model_dir/sac/test_', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
         for _ in range(20):
 

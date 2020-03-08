@@ -154,7 +154,7 @@ class BaseEnv(gym.Env):
 
 
 
-    def __init__(self,numStones):
+    def __init__(self,numStones=1):
         super(BaseEnv, self).__init__()
 
         print('environment created!')
@@ -304,7 +304,6 @@ class BaseEnv(gym.Env):
         self.total_reward = 0
 
         # initial state depends on environment (mission)
-        self.init_world_state()
         self.init_env()
 
         # wait for simulation to set up
@@ -346,20 +345,18 @@ class BaseEnv(gym.Env):
 
         # calc step reward and add to total
         r_t = self.reward_func()
-        self.total_reward = self.total_reward + r_t
-
-        print('total reward = ', self.total_reward)
 
         # check if done
-        done, reset = self.end_of_episode()
+        done, final_reward, reset = self.end_of_episode()
 
-        info = {"state" : obs, "action": action, "reward": self.total_reward, "step": self.steps, "reset reason": reset}
+        step_reward = r_t + final_reward
+        self.total_reward = self.total_reward + step_reward
+        print('total reward = ', self.total_reward)
 
-        return obs, r_t, done, info
+        info = {"state": obs, "action": action, "reward": self.total_reward, "step": self.steps, "reset reason": reset}
 
+        return obs, step_reward, done, info
 
-    def init_world_state(self):
-        raise NotImplementedError
 
     def reward_func(self):
         raise NotImplementedError
@@ -386,13 +383,10 @@ class BaseEnv(gym.Env):
 class PickUpEnv(BaseEnv):
     def __init__(self, numStones=1): #### Number of stones ####
         BaseEnv.__init__(self, numStones)
-
-    def init_world_state(self):
         # initial state depends on environment (mission)
         # self.stones_on_ground = self.numStones*[True]
         self.current_stone_height = {}
         self.last_stone_height = {}
-        pass
 
     def reward_func(self):
         # reward per step
@@ -424,6 +418,7 @@ class PickUpEnv(BaseEnv):
     def end_of_episode(self):
         done = False
         reset = 'No'
+        final_reward = 0
 
         MAX_STEPS = 6000 # 10 = 1 second
         if self.steps > MAX_STEPS:
@@ -451,15 +446,13 @@ class PickUpEnv(BaseEnv):
 
         self.steps += 1
 
-        return done, reset
+        return done, final_reward, reset
 
 
 class PutDownEnv(BaseEnv):
-    def __init__(self, numStones):
+    def __init__(self, numStones=1):
         BaseEnv.__init__(self, numStones)
-        self.desired_stone_pose = [250,250]
-
-    def init_world_state(self):
+        self.desired_stone_pose = [250, 250]
         # initial state depends on environment (mission)
         # send reset to simulation with initial state
         self.stones_on_ground = self.numStones*[False]
@@ -473,8 +466,9 @@ class PutDownEnv(BaseEnv):
     def end_of_episode(self):
         done = False
         reset = 'No'
+        final_reward = 0
 
-        MAX_STEPS = 5000
+        MAX_STEPS = 6000
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
@@ -484,17 +478,17 @@ class PutDownEnv(BaseEnv):
             done = True
             reset = 'sim success'
             print('----------------', reset, '----------------')
-            self.total_reward += self.succ_reward()
+            final_reward = self.succ_reward()
 
         self.steps += 1
 
-        return done, reset
+        return done, final_reward, reset
 
     def succ_reward(self):
         # end of episode reward depending on distance of stones from desired location
-        reward = 10000
+        reward = 1000
 
-        for ind in range(self.numStones):
+        for ind in range(1, self.numStones + 1):
             curret_pos = self.stones['StonePos' + str(ind)][0:2]
             dis = np.linalg.norm(curret_pos - self.desired_stone_pose)
             reward -= dis
@@ -503,11 +497,9 @@ class PutDownEnv(BaseEnv):
 
 
 class MoveWithStonesEnv(BaseEnv):
-    def __init__(self, numStones):
+    def __init__(self, numStones=1):
         BaseEnv.__init__(self, numStones)
         self.desired_vehicle_pose = [250,250]
-
-    def init_world_state(self):
         # initial state depends on environment (mission)
         # send reset to simulation with initial state
         self.stones_on_ground = self.numStones*[False]
@@ -516,8 +508,8 @@ class MoveWithStonesEnv(BaseEnv):
         # reward per step
         reward = -0.1
 
-        SINGLE_STONE_FALL = 10000
-        for stone in range(self.numStones):
+        SINGLE_STONE_FALL = 1000
+        for stone in range(1, self.numStones + 1):
             if not self.stones_on_ground[stone]:
                 if not self.stones['StoneIsLoaded' + str(stone)]:
                     reward -= SINGLE_STONE_FALL
@@ -528,35 +520,111 @@ class MoveWithStonesEnv(BaseEnv):
     def end_of_episode(self):
         done = False
         reset = 'No'
+        final_reward = 0
 
-        MAX_STEPS = 5000
-        SUCC_REWARD = 10000
+        MAX_STEPS = 6000
+        SUCC_REWARD = 1000
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
-            print('----------------', reset ,'----------------')
+            print('----------------', reset, '----------------')
 
         if self.got_to_desired_pose():
             done = True
             reset = 'sim success'
             print('----------------', reset, '----------------')
-            self.total_reward += SUCC_REWARD
+            final_reward = SUCC_REWARD
 
         self.steps += 1
 
-        return done, reset
+        return done, final_reward, reset
 
     def got_to_desired_pose(self):
         # check if vehicle got within tolerance of desired position
         success = False
 
-        curret_pos = self.world_state['VehiclePos'][0:2]
-        dis = np.linalg.norm(curret_pos - self.desired_vehicle_pose)
+        current_pos = self.world_state['VehiclePos'][0:2]
+        dis = np.linalg.norm(current_pos - self.desired_vehicle_pose)
         TOLERANCE = 0.1
         if dis < TOLERANCE:
             success = True
 
         return success
+
+
+class PushStonesEnv(BaseEnv):
+    def __init__(self, numStones=1):
+        BaseEnv.__init__(self, numStones)
+        self.desired_stone_pose = np.random.uniform(0, 500, 2) # [250, 250]
+        # initial state depends on environment (mission)
+        # send reset to simulation with initial state
+        self.current_dis = {}
+        self.last_dis = {}
+
+    def reward_func(self):
+        # reward per step
+        reward = -0.1
+
+        # K = 0.001
+        # dis = self.dis_from_desired_pose()
+        # reward += -K*np.mean(dis)
+
+        STONE_CLOSER = 10
+        self.current_dis = self.dis_from_desired_pose()
+        if bool(self.last_dis): # don't enter first time when last_stone_height is empty
+            if any(True for curr, last in zip(self.current_dis, self.last_dis) if curr < last):
+                reward += STONE_CLOSER
+                rospy.loginfo('---------------- positive reward! ----------------')
+
+        self.last_dis = self.current_dis
+
+        return reward
+
+    def end_of_episode(self):
+        done = False
+        reset = 'No'
+        final_reward = 0
+
+        MAX_STEPS = 6000
+        SUCC_REWARD = 1000
+        if self.steps > MAX_STEPS:
+            done = True
+            reset = 'limit time steps'
+            print('----------------', reset, '----------------')
+
+        if self.got_to_desired_pose():
+            done = True
+            reset = 'sim success'
+            print('----------------', reset, '----------------')
+            final_reward = SUCC_REWARD
+
+        self.steps += 1
+
+        return done, final_reward, reset
+
+    def dis_from_desired_pose(self):
+        # list of stones distances from desired pose
+
+        dis = []
+        for stone in range(1, self.numStones + 1):
+            current_pos = self.stones['StonePos' + str(stone)][0:2]
+            dis.append(np.linalg.norm(current_pos - self.desired_stone_pose))
+
+        return dis
+
+    def got_to_desired_pose(self):
+        # check if all stones within tolerance from desired pose
+
+        success = False
+        dis = self.dis_from_desired_pose()
+
+        TOLERANCE = 0.1
+        if all(item < TOLERANCE for item in dis):
+            success = True
+
+        return success
+
+
 
 # DEBUG
 # if __name__ == '__main__':

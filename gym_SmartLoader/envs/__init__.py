@@ -3,20 +3,25 @@ from gym.envs.registration import register
 
 register(
     id='BaseEnv-v0',
-    entry_point='gym_SmartLoader.envs.SmartLoaderEnvs_dir:BaseEnv',
+    entry_point='gym_SmartLoader.envs.SmartLoaderEnvs_dir:BaseEnv'
 )
 
 register(
     id='PickUpEnv-v0',
-    entry_point='gym_SmartLoader.envs.SmartLoaderEnvs_dir:PickUpEnv',
+    entry_point='gym_SmartLoader.envs.SmartLoaderEnvs_dir:PickUpEnv'
 )
 
 register(
     id='PutDownEnv-v0',
-        entry_point='gym_SmartLoader.envs:SmartLoaderEnvs_dir:PutDownEnv',
+    entry_point='gym_SmartLoader.envs.SmartLoaderEnvs_dir:PutDownEnv'
 )
 
 register(
     id='MoveWithStonesEnv-v0',
-        entry_point='gym_SmartLoader.envs:SmartLoaderEnvs_dir:MoveWithStonesEnv',
+    entry_point='gym_SmartLoader.envs.SmartLoaderEnvs_dir:MoveWithStonesEnv'
+)
+
+register(
+    id='PushStonesEnv-v0',
+    entry_point='gym_SmartLoader.envs.SmartLoaderEnvs_dir:PushStonesEnv'
 )

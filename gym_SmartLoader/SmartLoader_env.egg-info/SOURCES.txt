@@ -1,0 +1,5 @@
+setup.py
+SmartLoader_env.egg-info/PKG-INFO
+SmartLoader_env.egg-info/SOURCES.txt
+SmartLoader_env.egg-info/dependency_links.txt
+SmartLoader_env.egg-info/top_level.txt
