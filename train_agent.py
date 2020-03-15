@@ -22,7 +22,7 @@ save_interval = 2000
 best_mean_reward = -np.inf
 
 def save_fn(_locals, _globals):
-    global model, n_steps, best_mean_reward, best_model_path #, last_model_path
+    global model, n_steps, best_mean_reward, best_model_path, last_model_path
     if (n_steps + 1) % save_interval == 0:
 
         # Evaluate policy training performance
@@ -34,9 +34,9 @@ def save_fn(_locals, _globals):
             best_mean_reward = mean_reward
             print("Saving new best model")
             model.save(best_model_path + '_rew_' + str(np.round(best_mean_reward, 2)))
-        # model.save(
-        #     last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
-        #         time.localtime().tm_min))
+        model.save(
+            last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
+                time.localtime().tm_min))
     n_steps += 1
     pass
 
@@ -74,31 +74,50 @@ def main():
 
         num_timesteps = int(1e6)
 
-        # policy_kwargs = dict(layers=[64, 64, 64])
+        policy_kwargs = dict(layers=[64, 64, 64])
 
         log_dir = dir + '/log_dir/sac/test_{}'.format(str(k))
         logger.configure(folder=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
 
         # SAC - start learning from scratch
-        # model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=2e-4, buffer_size=500000,
+        # model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
         #      learning_starts=3000, train_freq=16, batch_size=64,
         #      tau=0.01, ent_coef='auto', target_update_interval=4,
         #      gradient_steps=4, target_entropy='auto', action_noise=None,
-        #      random_exploration=0.0, verbose=2, tensorboard_log=None,
-        #      _init_setup_model=True, full_tensorboard_log=False,
+        #      random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
+        #      _init_setup_model=True, policy_kwargs=policy_kwargs, full_tensorboard_log=True,
         #      seed=None, n_cpu_tf_sess=None)
 
         # Load best model and continue learning
-        models = os.listdir(dir + '/model_dir/sac')
-        ind, reward = [], []
-        for model in models:
-            ind.append(model.split('_')[1])
-            reward.append(model.split('_')[3])
-        best_reward = max(reward)
-        best_model_ind = reward.index(best_reward)
-        k = ind[best_model_ind]
-        model = SAC.load(dir + 'model_dir/sac/test_' + k + '_rew_' + best_reward, env=env,
-                         custom_objects=dict(learning_starts=0))
+        # models = os.listdir(dir + '/model_dir/sac')
+        # models_rew = (model for model in models if 'rew' in model)
+        # ind, reward = [], []
+        # for model in models_rew:
+        #     ind.append(model.split('_')[1])
+        #     reward.append(model.split('_')[3])
+        # best_reward = max(reward)
+        # best_model_ind = reward.index(best_reward)
+        # k = ind[best_model_ind]
+        # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_rew_' + best_reward, env=env,
+        #                  custom_objects=dict(learning_starts=0))
+        # Load last saved model and continue learning
+        # models = os.listdir(dir + '/model_dir/sac')
+        # models_time = (model for model in models if 'rew' not in model)
+        # ind, hour, min = [], [], []
+        # for model in models_time:
+        #     ind.append(model.split('_')[1])
+        #     hour.append(model.split('_')[3])
+        #     min.append(model.split('_')[4])
+        # date = models_time[0].split('_')[2]
+        # latest_hour = max(hour)
+        # latest_hour_ind = [i for i, n in enumerate(hour) if n == latest_hour]
+        # latest_min = max(min[latest_hour_ind])
+        # latest_min_ind = min(latest_min)
+        # k = ind[latest_min_ind]
+        # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
+        #                  env=env, custom_objects=dict(learning_starts=0))
+        model = SAC.load(dir + '/model_dir/sac/test_10_15_18_31.zip',
+                         env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0))
 
         # learn
         model.learn(total_timesteps=num_timesteps, callback=save_fn)
@@ -116,7 +135,7 @@ def main():
 
     else:
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_1_rew_38724.4', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
         for _ in range(20):
 

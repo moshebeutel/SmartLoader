@@ -15,11 +15,12 @@ import gym
 import sys
 import time
 from src.EpisodeManager import *
-from src.Unity2RealWorld import *
+import src.Unity2RealWorld as urw
 import gym
 from gym import spaces
 import numpy as np
 from math import pi as pi
+from scipy.spatial.transform import Rotation as R
 import rospy
 from std_msgs.msg import Header
 from std_msgs.msg import Int32, Bool
@@ -29,9 +30,11 @@ from sensor_msgs.msg import Imu
 from geometry_msgs.msg import PoseStamped, TwistStamped
 
 
+
 class BaseEnv(gym.Env):
 
     def VehiclePositionCB(self,stamped_pose):
+        # new_stamped_pose = urw.positionROS2RW(stamped_pose)
         x = stamped_pose.pose.position.x
         y = stamped_pose.pose.position.y
         z = stamped_pose.pose.position.z
@@ -88,17 +91,17 @@ class BaseEnv(gym.Env):
         qy = imu.orientation.y
         qz = imu.orientation.z
         qw = imu.orientation.w
-        self.world_state['VehicleOrien'] = np.array([qx,qy,qz,qw])
+        self.world_state['VehicleOrienIMU'] = np.array([qx,qy,qz,qw])
 
         wx = imu.angular_velocity.x
         wy = imu.angular_velocity.y
         wz = imu.angular_velocity.z
-        self.world_state['VehicleAngularVel'] = np.array([wx,wy,wz])
+        self.world_state['VehicleAngularVelIMU'] = np.array([wx,wy,wz])
 
         ax = imu.linear_acceleration.x
         ay = imu.linear_acceleration.y
         az = imu.linear_acceleration.z
-        self.world_state['VehicleLinearAcc'] = np.array([ax,ay,az])
+        self.world_state['VehicleLinearAccIMU'] = np.array([ax,ay,az])
 
         # rospy.loginfo('vehicle imu is:' + str(imu))
 
@@ -121,17 +124,19 @@ class BaseEnv(gym.Env):
         # rospy.loginfo('Is stone ' + str(stone) + ' loaded? ' + str(question))
 
     def do_action(self, action):
-        # TODO
         rospy.logdebug(self.joyactions)
         joymessage = Joy()
         # self.setDebugAction(action) # DEBUG
-        self.setAction(action)
+        # clipped_action = self.clipAction(action) # clip actions to fit action_size
+        self.clipAction(action)  # clip actions to fit action_size
         joymessage.axes = [self.joyactions["0"], 0., self.joyactions["2"], self.joyactions["3"], self.joyactions["4"], self.joyactions["5"], 0., 0.]
 
         # while not rospy.is_shutdown():
         self.pubjoy.publish(joymessage)
         rospy.logdebug(joymessage)
             # self.rate.sleep()
+
+        # return clipped_action
 
     def setDebugAction(self, values): # DEBUG
         self.joyactions["0"] = values["0"]
@@ -140,17 +145,48 @@ class BaseEnv(gym.Env):
         self.joyactions["4"] = values["4"]
         self.joyactions["5"] = values["5"]
 
+
     def debugAction(self):
         actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.}  # drive forwards
         return actionValues
 
-    def setAction(self, values):
+    def clipAction(self, agent_action):
         # translate chosen action (array) to joystick action (dict)
-        self.joyactions["0"] = values[0]
-        self.joyactions["2"] = values[1]
-        self.joyactions["3"] = values[2]
-        self.joyactions["4"] = values[3]
-        self.joyactions["5"] = values[4]
+
+        self.joyactions["0"] = agent_action[0] # vehicle turn
+        self.joyactions["3"] = agent_action[2] # blade pitch
+        self.joyactions["4"] = agent_action[3] # arm up/down
+
+        # clip actions to fit action_size
+        # clipped_action = agent_action
+        #
+        # if self.action_size <= 2: # no arm actions
+        #     self.joyactions["3"] = 0. # blade pitch - default value
+        #     self.joyactions["4"] = 0. # arm up/down - default value
+        #     self.joyactions["0"] = agent_action[0]/5 # steer [-0.2,0.2]
+        #
+        # if self.action_size == 1: # drive only no steer
+        #     self.joyactions["0"] = 0. # vehicle turn - default value
+        #
+        # clipped_action[0] = self.joyactions["0"]
+        # clipped_action[2] = self.joyactions["3"]
+        # clipped_action[3] = self.joyactions["4"]
+
+        # translate 4 dim agent action to 5 dim simulation action
+        # agent action: [steer, speed, blade_pitch, arm_height]
+        # simulation joystick actions: [steer, speed backwards, blade pitch, arm height, speed forwards]
+        # all [-1, 1]
+        self.joyactions["2"] = 1. # default value
+        self.joyactions["5"] = 1. # default value
+        # clipped_action[1] = 0. # default value
+        if agent_action[1] < 0: # drive backwards
+            self.joyactions["2"] = -2*agent_action[1] - 1
+            # clipped_action[1] = self.joyactions["2"]
+        elif agent_action[1] > 0: # drive forwards
+            self.joyactions["5"] = -2*agent_action[1] + 1
+            # clipped_action[1] = self.joyactions["5"]
+
+        # return clipped_action
 
 
 
@@ -195,12 +231,11 @@ class BaseEnv(gym.Env):
         self.pubjoy = rospy.Publisher("joy", Joy, queue_size=10)
 
         ## Define gym space
-        # action = [steering, armHeight, throttle, armPitch]
-        # min_action = np.array([-100,   0, -100, -pi/2])
-        # max_action = np.array([ 100, 100,  100, pi/2])
-        # TODO: limits normalized as joystick action [-1,1]?
-        min_action = np.array([-1., -1., -1., -1., -1.])
-        max_action = np.array([ 1.,  1.,  1.,  1.,  1.])
+        min_action = np.array(4*[-1.])
+        max_action = np.array(4*[ 1.])
+        # self.action_size = 4  # all actions
+        # self.action_size = 2  # without arm actions
+        # self.action_size = 1  # drive only forwards
 
         self.action_space = spaces.Box(low=min_action,high=max_action)
         self.observation_space = self.obs_space_init()
@@ -212,19 +247,21 @@ class BaseEnv(gym.Env):
         # obs = [local_pose:(x,y,z), local_orien_quat:(x,y,z,w)
         #        velocity: linear:(vx,vy,vz), angular:(wx,wy,wz)
         #        arm_height: h
-        #        arm_imu: orein_quat:(x,y,z,w), vel:(wx,wy,wz)
+        #        arm_imu: orein_quat:(x,y,z,w), vel:(wx,wy,wz), acc:(ax,ay,az)
         #        stone<id>: pose:(x,y,z), isLoaded:bool]
         # TODO: update all limits
 
 
-        min_pos = np.array(3*[0.])
-        max_pos = np.array(3*[500.]) # size of ground in Unity - TODO: update to room size
+        min_pos = np.array(3*[-500.])
+        max_pos = np.array(3*[ 500.]) # size of ground in Unity - TODO: update to room size
         min_quat = np.array(4*[-1.])
         max_quat = np.array(4*[ 1.])
         min_lin_vel = np.array(3*[-5.])
         max_lin_vel = np.array(3*[ 5.])
-        min_ang_vel = np.array(3*[-pi/4])
-        max_ang_vel = np.array(3*[ pi/4])
+        min_ang_vel = np.array(3*[-pi/2])
+        max_ang_vel = np.array(3*[ pi/2])
+        min_lin_acc = np.array(3*[-1])
+        max_lin_acc = np.array(3*[ 1])
         min_arm_height = np.array([0.])
         max_arm_height = np.array([100.])
         # SPACES DICT:
@@ -235,11 +272,12 @@ class BaseEnv(gym.Env):
         #                         "ArmHeight": spaces.Box(low=np.array([0.]), high=np.array([100.])),
         #                         "BladeOrien": spaces.Box(low=min_quat, high=max_quat),
         #                         "BladeAngularVel": spaces.Box(low=min_ang_vel, high=max_ang_vel),
+        #                         "BladeLinearAcc": spaces.Box(low=min_lin_acc, high=max_max_acc),
         #                         "Stones": spaces.Dict(self.obs_stones())})
 
         # SPACES BOX - WITHOUT IS LOADED
-        low  = np.concatenate((min_pos,min_quat,min_lin_vel,min_ang_vel,min_arm_height,min_quat,min_ang_vel), axis=None)
-        high = np.concatenate((max_pos,max_quat,max_lin_vel,max_ang_vel,max_arm_height,max_quat,max_ang_vel), axis=None)
+        low  = np.concatenate((min_pos,min_quat,min_lin_vel,min_ang_vel,min_arm_height,min_quat,min_ang_vel,min_lin_acc), axis=None)
+        high = np.concatenate((max_pos,max_quat,max_lin_vel,max_ang_vel,max_arm_height,max_quat,max_ang_vel,max_lin_acc), axis=None)
         for ind in range(1, self.numStones + 1):
             low  = np.concatenate((low,min_pos), axis=None)
             high = np.concatenate((high,max_pos), axis=None)
@@ -272,7 +310,8 @@ class BaseEnv(gym.Env):
 
         # SPACES BOX - fit current obs data to obs_space.Box structure
         obs = np.array([])
-        keys = {'VehiclePos', 'VehicleOrien', 'VehicleLinearVel', 'VehicleAngularVel', 'ArmHeight', 'BladeOrien', 'BladeAngularVel'}
+        keys = {'VehiclePos', 'VehicleOrien', 'VehicleLinearVel', 'VehicleAngularVel',
+                'ArmHeight', 'BladeOrien', 'BladeAngularVel', 'BladeLinearAcc'}
         while True: # wait for all topics to arrive
             if all(key in self.world_state for key in keys):
                 break
@@ -331,6 +370,10 @@ class BaseEnv(gym.Env):
         obs = self.current_obs()
         # rospy.loginfo(obs)
 
+        # blade down near ground
+        for _ in range(20000):
+            self.blade_down()
+
         return obs
 
 
@@ -351,12 +394,18 @@ class BaseEnv(gym.Env):
 
         step_reward = r_t + final_reward
         self.total_reward = self.total_reward + step_reward
-        print('total reward = ', self.total_reward)
+        # print('total reward = ', self.total_reward)
 
         info = {"state": obs, "action": action, "reward": self.total_reward, "step": self.steps, "reset reason": reset}
 
         return obs, step_reward, done, info
 
+
+    def blade_down(self):
+        # take blade down near ground at beginning of episode
+        joymessage = Joy()
+        joymessage.axes = [0., 0., 1., 0., -1., 1., 0., 0.]
+        self.pubjoy.publish(joymessage)
 
     def reward_func(self):
         raise NotImplementedError
@@ -366,7 +415,6 @@ class BaseEnv(gym.Env):
 
     def render(self, mode='human'):
         pass
-
 
     def run(self):
         # DEBUG
@@ -555,84 +603,218 @@ class MoveWithStonesEnv(BaseEnv):
 class PushStonesEnv(BaseEnv):
     def __init__(self, numStones=1):
         BaseEnv.__init__(self, numStones)
-        self.desired_stone_pose = np.random.uniform(0, 500, 2) # [250, 250]
+        self.desired_stone_pose = [135, -277] # np.random.uniform(0, 500, 2) #
+
         # initial state depends on environment (mission)
         # send reset to simulation with initial state
-        self.current_dis = {}
-        self.last_dis = {}
+        # self.current_stone_dis = {} # distance stone from desired pose
+        # self.last_stone_dis = {}
+        # self.current_blade_dis = {} # distance blade from stone
+        # self.last_blade_dis = {}
+
+        # self.init_dis_blade_stone = self.sqr_dis_blade_stone()
+        # self.init_dis_stone_desired_pose = self.sqr_dis_stone_desired_pose()
 
     def reward_func(self):
         # reward per step
-        reward = -0.1
+        # reward = -0.1
+        # reward = 0
 
-        # K = 0.001
-        # dis = self.dis_from_desired_pose()
-        # reward += -K*np.mean(dis)
+        BLADE_CLOSER = 0.01
+        mean_sqr_blade_dis = np.mean(self.sqr_dis_blade_stone())
+        reward = BLADE_CLOSER / mean_sqr_blade_dis
+        # reward -= BLADE_CLOSER*mean_sqr_blade_dis
 
-        STONE_CLOSER = 10
-        self.current_dis = self.dis_from_desired_pose()
-        if bool(self.last_dis): # don't enter first time when last_stone_height is empty
-            if any(True for curr, last in zip(self.current_dis, self.last_dis) if curr < last):
-                reward += STONE_CLOSER
-                rospy.loginfo('---------------- positive reward! ----------------')
+        STONE_CLOSER = 0.1
+        mean_sqr_stone_dis = np.mean(self.sqr_dis_stone_desired_pose())
+        reward += STONE_CLOSER / mean_sqr_stone_dis
 
-        self.last_dis = self.current_dis
+        # # positive reward if stone is closer to desired pose, negative if further away
+        # STONE_CLOSER = 10
+        # self.current_stone_dis = self.sqr_dis_stone_desired_pose()
+        # if bool(self.last_stone_dis): # don't enter first time when last_stone_height is empty
+        #     diff = [curr - last for curr, last in zip(self.current_stone_dis, self.last_stone_dis)]
+        #     if any(item < 0 for item in diff): # stone closer
+        #         reward += STONE_CLOSER / np.mean(self.current_stone_dis)
+        #     if any(item > 0 for item in diff): # stone further away
+        #         reward -= STONE_CLOSER / np.mean(self.current_stone_dis)
+        #     # reward -= STONE_CLOSER*np.mean(diff)
+        #
+        # self.last_stone_dis = self.current_stone_dis
+        #
+        #     # if any(True for curr, last in zip(self.current_stone_dis, self.last_stone_dis) if curr < last):
+        #     #     reward += STONE_CLOSER
+        #         # rospy.loginfo('---------------- STONE closer, positive reward +10 ! ----------------')
+        #
+        # # positive reward if blade is closer to stone's current pose, negative if further away
+        # BLADE_CLOSER = 1
+        # self.current_blade_dis = self.sqr_dis_blade_stone()
+        # if bool(self.last_blade_dis): # don't enter first time when last_stone_height is empty
+        #     diff = [curr - last for curr, last in zip(self.current_blade_dis, self.last_blade_dis)]
+        #     if any(item < 0 for item in diff): # blade closer
+        #         reward += BLADE_CLOSER / np.mean(self.current_blade_dis)
+        #     if any(item > 0 for item in diff): # blade further away
+        #         reward -= BLADE_CLOSER / np.mean(self.current_blade_dis)
+        #     # reward -= BLADE_CLOSER*np.mean(diff)
+        #
+        # self.last_blade_dis = self.current_blade_dis
+        #
+        # #     if any(True for curr, last in zip(self.current_blade_dis, self.last_blade_dis) if curr < last):
+        # #         reward += BLADE_CLOSER
+        # #         # rospy.loginfo('----------------  BLADE closer, positive reward +1 ! ----------------')
 
         return reward
+
 
     def end_of_episode(self):
         done = False
         reset = 'No'
         final_reward = 0
 
-        MAX_STEPS = 6000
-        SUCC_REWARD = 1000
+        FAIL_REWARD = 10000
+        # if self.out_of_boarders():
+        #     done = True
+        #     reset = 'out of boarders'
+        #     print('----------------', reset, '----------------')
+        #     final_reward = - FAIL_REWARD
+        #     self.episode.killSimulation()
+        #     self.simOn = False
+
+        MAX_STEPS = 8000
+        # MAX_STEPS = 100000
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
             print('----------------', reset, '----------------')
+            final_reward = - FAIL_REWARD
+            self.episode.killSimulation()
+            self.simOn = False
 
+        # if self.blade_got_to_stone():
         if self.got_to_desired_pose():
             done = True
             reset = 'sim success'
             print('----------------', reset, '----------------')
-            final_reward = SUCC_REWARD
+            # final_reward = SUCC_REWARD
+            # final_reward = SUCC_REWARD*MAX_STEPS/self.steps
+            self.episode.killSimulation()
+            self.simOn = False
 
         self.steps += 1
 
         return done, final_reward, reset
 
-    def dis_from_desired_pose(self):
+    def scene_boarders(self):
+        # define scene boarders depending on vehicle and stone initial positions and desired pose
+        init_vehicle_pose = self.world_state['VehiclePos']
+        vehicle_box = self.pose_to_box(init_vehicle_pose)
+
+        stones_box = []
+        for stone in range(1, self.numStones + 1):
+            init_stone_pose = self.stones['StonePos' + str(stone)]
+            stones_box = self.containing_box(stones_box, self.pose_to_box(init_stone_pose))
+
+        scene_boarders = self.containing_box(vehicle_box, stones_box)
+        scene_boarders = self.containing_box(scene_boarders, self.pose_to_box(self.desired_stone_pose))
+
+        return scene_boarders
+
+    def pose_to_box(self, pose):
+        # define a box of boarders around pose (2 dim)
+        BOX = 2
+
+        return [pose[0]-BOX, pose[0]+BOX, pose[1]-BOX, pose[1]+BOX]
+
+    def containing_box(self, box1, box2):
+        # input 2 boxes and return box containing both
+        if not box1:
+            return box2
+        else:
+            x = [box1[0], box1[1], box2[0], box2[1]]
+            y = [box1[2], box1[3], box2[2], box2[3]]
+
+            return [min(x), max(x), min(y), max(y)]
+
+    def out_of_boarders(self):
+        # check if vehicle is out of scene boarders
+        boarders = self.scene_boarders()
+        curr_vehicle_pose = self.world_state['VehiclePos']
+
+        ans = False
+        if curr_vehicle_pose[0] < boarders[0] or curr_vehicle_pose[0] > boarders[1] or \
+                curr_vehicle_pose[1] < boarders[2] or curr_vehicle_pose[1] > boarders[3]:
+            ans = True
+
+        return ans
+
+    def sqr_dis_stone_desired_pose(self):
         # list of stones distances from desired pose
 
-        dis = []
+        sqr_dis = []
         for stone in range(1, self.numStones + 1):
             current_pos = self.stones['StonePos' + str(stone)][0:2]
-            dis.append(np.linalg.norm(current_pos - self.desired_stone_pose))
+            sqr_dis.append(self.squared_dis(current_pos, self.desired_stone_pose))
 
-        return dis
+        return sqr_dis
 
     def got_to_desired_pose(self):
         # check if all stones within tolerance from desired pose
 
         success = False
-        dis = self.dis_from_desired_pose()
+        sqr_dis = self.sqr_dis_stone_desired_pose()
 
-        TOLERANCE = 0.1
-        if all(item < TOLERANCE for item in dis):
+        TOLERANCE = 0.5
+        if all(item < TOLERANCE for item in sqr_dis):
             success = True
 
         return success
 
+    def blade_got_to_stone(self):
+        # check if blade got to stone within tolerance
+        success = False
+        sqr_dis = self.sqr_dis_blade_stone()
+
+        TOLERANCE = 5
+        if all(item < TOLERANCE for item in sqr_dis):
+            success = True
+
+        return success
+
+    def blade_pose(self):
+        L = 0.75 # distance from center of vehicle to blade BOBCAT
+        r = R.from_quat(self.world_state['VehicleOrien'])
+
+        blade_pose = self.world_state['VehiclePos'] + L*r.as_rotvec()
+
+        return blade_pose
+
+    def sqr_dis_blade_stone(self):
+        # list of distances from blade to stones
+
+        sqr_dis = []
+        blade_pose = self.blade_pose()[0:2]
+        for stone in range(1, self.numStones + 1):
+            stone_pose = self.stones['StonePos' + str(stone)][0:2]
+            sqr_dis.append(self.squared_dis(blade_pose, stone_pose))
+
+        return sqr_dis
+
+    def squared_dis(self, p1, p2):
+        # calc distance between two points
+        # p1,p2 = [x,y]
+
+        squared_dis = pow(p1[0]-p2[0], 2) + pow(p1[1]-p2[1], 2)
+
+        return squared_dis
 
 
 # DEBUG
 # if __name__ == '__main__':
-#     from stable_baselines.common.env_checker import check_env
+#     # from stable_baselines.common.env_checker import check_env
+#     #
+#     # env = PickUpEnv()
+#     # # It will check your custom environment and output additional warnings if needed
+#     # check_env(env)
 #
-#     env = PickUpEnv()
-#     # It will check your custom environment and output additional warnings if needed
-#     check_env(env)
-
 #     node = PickUpEnv(2)
 #     node.run()
