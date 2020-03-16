@@ -62,6 +62,7 @@ def main():
             for item in tests:
                 indexes.append(int(item[5:]))
             k = max(indexes) + 1
+            # k = max(indexes)
 
         except FileNotFoundError:
             os.makedirs(dir + '/log_dir/sac')
@@ -116,7 +117,7 @@ def main():
         # k = ind[latest_min_ind]
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
-        model = SAC.load(dir + '/model_dir/sac/test_10_15_18_31.zip',
+        model = SAC.load(dir + '/model_dir/sac/test_15_16_12_9.zip',
                          env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0))
 
         # learn
@@ -135,9 +136,9 @@ def main():
 
     else:
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_1_rew_38724.4', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_15_16_12_9.zip', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
-        for _ in range(20):
+        for _ in range(2):
 
             obs = env.reset()
             done = False
