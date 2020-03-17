@@ -201,6 +201,10 @@ class BaseEnv(gym.Env):
         self.simOn = False
         self.numStones = numStones
 
+        # For boarders limit
+        # PushEnv
+        self.desired_stone_pose = [137, -277]
+
         ## ROS messages
         rospy.init_node('slagent', anonymous=False)
         self.rate = rospy.Rate(10)  # 10hz
@@ -365,13 +369,15 @@ class BaseEnv(gym.Env):
         #     if static > 5000:
         #         break
 
+        # For boarders limit
+        self.boarders = self.scene_boarders()
 
         # get observation from simulation
         obs = self.current_obs()
         # rospy.loginfo(obs)
 
         # blade down near ground
-        for _ in range(20000):
+        for _ in range(32000):
             self.blade_down()
 
         return obs
@@ -400,12 +406,55 @@ class BaseEnv(gym.Env):
 
         return obs, step_reward, done, info
 
-
     def blade_down(self):
         # take blade down near ground at beginning of episode
         joymessage = Joy()
         joymessage.axes = [0., 0., 1., 0., -1., 1., 0., 0.]
         self.pubjoy.publish(joymessage)
+
+    def scene_boarders(self):
+        # define scene boarders depending on vehicle and stone initial positions and desired pose
+        init_vehicle_pose = self.world_state['VehiclePos']
+        vehicle_box = self.pose_to_box(init_vehicle_pose, box=1)
+
+        stones_box = []
+        for stone in range(1, self.numStones + 1):
+            init_stone_pose = self.stones['StonePos' + str(stone)]
+            stones_box = self.containing_box(stones_box, self.pose_to_box(init_stone_pose, box=1))
+
+        scene_boarders = self.containing_box(vehicle_box, stones_box)
+        scene_boarders = self.containing_box(scene_boarders, self.pose_to_box(self.desired_stone_pose, box=2))
+
+        return scene_boarders
+
+    def pose_to_box(self, pose, box):
+        # define a box of boarders around pose (2 dim)
+
+        return [pose[0]-box, pose[0]+box, pose[1]-box, pose[1]+box]
+
+    def containing_box(self, box1, box2):
+        # input 2 boxes and return box containing both
+        if not box1:
+            return box2
+        else:
+            x = [box1[0], box1[1], box2[0], box2[1]]
+            y = [box1[2], box1[3], box2[2], box2[3]]
+
+            return [min(x), max(x), min(y), max(y)]
+
+    def out_of_boarders(self):
+        # check if vehicle is out of scene boarders
+        boarders = self.boarders
+        curr_vehicle_pose = self.world_state['VehiclePos']
+        # if self.steps < 2:
+        #     print(boarders)
+        #     print(curr_vehicle_pose)
+
+        if (curr_vehicle_pose[0] < boarders[0] or curr_vehicle_pose[0] > boarders[1] or
+                curr_vehicle_pose[1] < boarders[2] or curr_vehicle_pose[1] > boarders[3]):
+            return True
+        else:
+            return False
 
     def reward_func(self):
         raise NotImplementedError
@@ -603,15 +652,15 @@ class MoveWithStonesEnv(BaseEnv):
 class PushStonesEnv(BaseEnv):
     def __init__(self, numStones=1):
         BaseEnv.__init__(self, numStones)
-        self.desired_stone_pose = [137, -277] # np.random.uniform(0, 500, 2) #
 
         # initial state depends on environment (mission)
         # send reset to simulation with initial state
-        # self.current_stone_dis = {} # distance stone from desired pose
-        # self.last_stone_dis = {}
+        self.current_stone_dis = {} # distance stone from desired pose
+        self.last_stone_dis = {}
         self.current_blade_dis = {} # distance blade from stone
         self.last_blade_dis = {}
-
+        self.current_stone_middle_blade_dis = 0
+        self.last_stone_middle_blade_dis = 0
         # self.init_dis_blade_stone = self.sqr_dis_blade_stone()
         # self.init_dis_stone_desired_pose = self.sqr_dis_stone_desired_pose()
 
@@ -620,48 +669,60 @@ class PushStonesEnv(BaseEnv):
         # reward = -0.1
         reward = 0
 
-        # BLADE_CLOSER = 0.01
+        # BLADE_CLOSER = 0.1
         # mean_sqr_blade_dis = np.mean(self.sqr_dis_blade_stone())
         # reward = BLADE_CLOSER / mean_sqr_blade_dis
-        # reward -= BLADE_CLOSER*mean_sqr_blade_dis
-
-        STONE_CLOSER = 1
-        mean_sqr_stone_dis = np.mean(self.sqr_dis_stone_desired_pose())
-        reward += STONE_CLOSER / mean_sqr_stone_dis
+        #
+        # STONE_CLOSER = 1
+        # mean_sqr_stone_dis = np.mean(self.sqr_dis_stone_desired_pose())
+        # reward += STONE_CLOSER / mean_sqr_stone_dis
+        #
+        # # for number of stones = 1
+        # STONE_MIDDLE_BLADE = 0.5
+        # reward += STONE_MIDDLE_BLADE / self.sqr_dis_optimal_stone_pose()
 
         # # positive reward if stone is closer to desired pose, negative if further away
-        # STONE_CLOSER = 10
-        # self.current_stone_dis = self.sqr_dis_stone_desired_pose()
-        # if bool(self.last_stone_dis): # don't enter first time when last_stone_height is empty
-        #     diff = [curr - last for curr, last in zip(self.current_stone_dis, self.last_stone_dis)]
-        #     if any(item < 0 for item in diff): # stone closer
-        #         reward += STONE_CLOSER / np.mean(self.current_stone_dis)
-        #     if any(item > 0 for item in diff): # stone further away
-        #         reward -= STONE_CLOSER / np.mean(self.current_stone_dis)
-        #     # reward -= STONE_CLOSER*np.mean(diff)
-        #
-        # self.last_stone_dis = self.current_stone_dis
+        STONE_CLOSER = 10
+        self.current_stone_dis = self.sqr_dis_stone_desired_pose()
+        if bool(self.last_stone_dis): # don't enter first time when last_stone_height is empty
+            diff = [curr - last for curr, last in zip(self.current_stone_dis, self.last_stone_dis)]
+            if any(item < 0 for item in diff): # stone closer
+                reward += STONE_CLOSER / np.mean(self.current_stone_dis)
+            if any(item > 0 for item in diff): # stone further away
+                reward -= STONE_CLOSER / np.mean(self.current_stone_dis)
+            # reward -= STONE_CLOSER*np.mean(diff)
+
+        self.last_stone_dis = self.current_stone_dis
         #
         #     # if any(True for curr, last in zip(self.current_stone_dis, self.last_stone_dis) if curr < last):
         #     #     reward += STONE_CLOSER
         #         # rospy.loginfo('---------------- STONE closer, positive reward +10 ! ----------------')
-        #
+
         # # positive reward if blade is closer to stone's current pose, negative if further away
-        BLADE_CLOSER = 0.1
+        BLADE_CLOSER = 1
         self.current_blade_dis = self.sqr_dis_blade_stone()
         if bool(self.last_blade_dis): # don't enter first time when last_stone_height is empty
             diff = [curr - last for curr, last in zip(self.current_blade_dis, self.last_blade_dis)]
             if any(item < 0 for item in diff): # blade closer
                 reward += BLADE_CLOSER / np.mean(self.current_blade_dis)
-            # if any(item > 0 for item in diff): # blade further away
-            #     reward -= BLADE_CLOSER / np.mean(self.current_blade_dis)
+            if any(item > 0 for item in diff): # blade further away
+                reward -= BLADE_CLOSER / np.mean(self.current_blade_dis)
             # reward -= BLADE_CLOSER*np.mean(diff)
-        #
+
         self.last_blade_dis = self.current_blade_dis
         #
-        # #     if any(True for curr, last in zip(self.current_blade_dis, self.last_blade_dis) if curr < last):
-        # #         reward += BLADE_CLOSER
-        # #         # rospy.loginfo('----------------  BLADE closer, positive reward +1 ! ----------------')
+        #     if any(True for curr, last in zip(self.current_blade_dis, self.last_blade_dis) if curr < last):
+        #         reward += BLADE_CLOSER
+        #         # rospy.loginfo('----------------  BLADE closer, positive reward +1 ! ----------------')
+
+        # for number of stones = 1
+        STONE_MIDDLE_BLADE = 1
+        self.current_stone_middle_blade_dis = self.sqr_dis_optimal_stone_pose()
+        diff = self.current_stone_middle_blade_dis - self.last_stone_middle_blade_dis
+        if diff < 0:
+            reward += STONE_MIDDLE_BLADE / self.current_stone_middle_blade_dis
+        if diff > 0:
+            reward -= STONE_MIDDLE_BLADE / self.current_stone_middle_blade_dis
 
         return reward
 
@@ -671,22 +732,21 @@ class PushStonesEnv(BaseEnv):
         reset = 'No'
         final_reward = 0
 
-        FAIL_REWARD = 20000
-        # if self.out_of_boarders():
-        #     done = True
-        #     reset = 'out of boarders'
-        #     print('----------------', reset, '----------------')
-        #     final_reward = - FAIL_REWARD
-        #     self.episode.killSimulation()
-        #     self.simOn = False
+        FINAL_REWARD = 10000
+        if self.out_of_boarders():
+            done = True
+            reset = 'out of boarders'
+            print('----------------', reset, '----------------')
+            final_reward = - FINAL_REWARD
+            self.episode.killSimulation()
+            self.simOn = False
 
-        MAX_STEPS = 16000
-        # MAX_STEPS = 100000
+        MAX_STEPS = 30000 # 20000 # 16000 # 8000
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
             print('----------------', reset, '----------------')
-            final_reward = - FAIL_REWARD
+            final_reward = - FINAL_REWARD
             self.episode.killSimulation()
             self.simOn = False
 
@@ -695,57 +755,14 @@ class PushStonesEnv(BaseEnv):
             done = True
             reset = 'sim success'
             print('----------------', reset, '----------------')
-            # final_reward = SUCC_REWARD
-            # final_reward = SUCC_REWARD*MAX_STEPS/self.steps
+            final_reward = 100*FINAL_REWARD*MAX_STEPS/self.steps
+            print('----------------', str(final_reward), '----------------')
             self.episode.killSimulation()
             self.simOn = False
 
         self.steps += 1
 
         return done, final_reward, reset
-
-    # def scene_boarders(self):
-    #     # define scene boarders depending on vehicle and stone initial positions and desired pose
-    #     init_vehicle_pose = self.world_state['VehiclePos']
-    #     vehicle_box = self.pose_to_box(init_vehicle_pose)
-    #
-    #     stones_box = []
-    #     for stone in range(1, self.numStones + 1):
-    #         init_stone_pose = self.stones['StonePos' + str(stone)]
-    #         stones_box = self.containing_box(stones_box, self.pose_to_box(init_stone_pose))
-    #
-    #     scene_boarders = self.containing_box(vehicle_box, stones_box)
-    #     scene_boarders = self.containing_box(scene_boarders, self.pose_to_box(self.desired_stone_pose))
-    #
-    #     return scene_boarders
-    #
-    # def pose_to_box(self, pose):
-    #     # define a box of boarders around pose (2 dim)
-    #     BOX = 2
-    #
-    #     return [pose[0]-BOX, pose[0]+BOX, pose[1]-BOX, pose[1]+BOX]
-    #
-    # def containing_box(self, box1, box2):
-    #     # input 2 boxes and return box containing both
-    #     if not box1:
-    #         return box2
-    #     else:
-    #         x = [box1[0], box1[1], box2[0], box2[1]]
-    #         y = [box1[2], box1[3], box2[2], box2[3]]
-    #
-    #         return [min(x), max(x), min(y), max(y)]
-    #
-    # def out_of_boarders(self):
-    #     # check if vehicle is out of scene boarders
-    #     boarders = self.scene_boarders()
-    #     curr_vehicle_pose = self.world_state['VehiclePos']
-    #
-    #     ans = False
-    #     if curr_vehicle_pose[0] < boarders[0] or curr_vehicle_pose[0] > boarders[1] or \
-    #             curr_vehicle_pose[1] < boarders[2] or curr_vehicle_pose[1] > boarders[3]:
-    #         ans = True
-    #
-    #     return ans
 
     def sqr_dis_stone_desired_pose(self):
         # list of stones distances from desired pose
@@ -788,14 +805,39 @@ class PushStonesEnv(BaseEnv):
 
         return blade_pose
 
+    def stone_optimal_pose(self):
+        # using current blade to stone distance to calc optimal position of stone for pushing from the middle of the blade
+        L = pow(self.sqr_dis_blade_one_stone(), 0.5) # distance from center of vehicle to blade BOBCAT
+        r = R.from_quat(self.world_state['VehicleOrien'])
+
+        optimal_pose = self.world_state['VehiclePos'] + L*r.as_rotvec()
+
+        return optimal_pose
+
+    def sqr_dis_optimal_stone_pose(self):
+        # for number of stones = 1
+
+        optimal_pose = self.stone_optimal_pose()[0:2]
+        stone_pose = self.stones['StonePos1'][0:2]
+        sqr_dis = self.squared_dis(optimal_pose, stone_pose)
+
+        return sqr_dis
+
     def sqr_dis_blade_stone(self):
         # list of distances from blade to stones
-
         sqr_dis = []
         blade_pose = self.blade_pose()[0:2]
         for stone in range(1, self.numStones + 1):
             stone_pose = self.stones['StonePos' + str(stone)][0:2]
             sqr_dis.append(self.squared_dis(blade_pose, stone_pose))
+
+        return sqr_dis
+
+    def sqr_dis_blade_one_stone(self):
+        # for number of stones = 1
+        blade_pose = self.blade_pose()[0:2]
+        stone_pose = self.stones['StonePos1'][0:2]
+        sqr_dis = self.squared_dis(blade_pose, stone_pose)
 
         return sqr_dis
 
