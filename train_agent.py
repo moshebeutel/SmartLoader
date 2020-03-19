@@ -34,18 +34,23 @@ def save_fn(_locals, _globals):
             best_mean_reward = mean_reward
             print("Saving new best model")
             try:
-                model.save(best_model_path + '_rew_' + str(np.round(best_mean_reward, 2)))
+                model.save(here + "/" + best_model_path + '_rew_' + str(np.round(best_mean_reward, 2)))
             except FileNotFoundError as fileNotFound:
                 print("Problem in first save with %s" % fileNotFound )
             except:
                 print("Not clear what the problem")
 
         try:
-            model.save(
-                last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
-                time.localtime().tm_min))
+            fn = here +"/"+ last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
+                time.localtime().tm_min)
+            model.save(fn)
+        #    model.save(
+        #        last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
+         #       time.localtime().tm_min))
         except FileNotFoundError as fileNotFound:
-            print("Problem with %s" % fileNotFound)
+        #    print("Problem with %s" % fileNotFound)
+            print(os.getcwd())
+            print("Problem with:"+fn)
         except:
             print("Not clear what the problem here")
 
@@ -54,12 +59,14 @@ def save_fn(_locals, _globals):
 
 
 def main():
-    global model, best_model_path, last_model_path
+    global model, best_model_path, last_model_path, here
     mission = 'PushStonesEnv' # Change according to algorithm
     env = gym.make(mission + '-v0').unwrapped
     train_model = True
 
     # Create log dir
+    here = os.getcwd()
+    print("ZZZZZZZZZZZZZZZZ::"+here)
     dir = 'stable_bl/' + mission
     os.makedirs(dir + '/model_dir/sac', exist_ok=True)
 
