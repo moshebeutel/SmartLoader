@@ -33,10 +33,22 @@ def save_fn(_locals, _globals):
         if mean_reward > best_mean_reward:
             best_mean_reward = mean_reward
             print("Saving new best model")
-            model.save(best_model_path + '_rew_' + str(np.round(best_mean_reward, 2)))
-        model.save(
-            last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
+            try:
+                model.save(best_model_path + '_rew_' + str(np.round(best_mean_reward, 2)))
+            except FileNotFoundError as fileNotFound:
+                print("Problem in first save with %s" % fileNotFound )
+            except:
+                print("Not clear what the problem")
+
+        try:
+            model.save(
+                last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
                 time.localtime().tm_min))
+        except FileNotFoundError as fileNotFound:
+            print("Problem with %s" % fileNotFound)
+        except:
+            print("Not clear what the problem here")
+
     n_steps += 1
     pass
 
@@ -81,13 +93,13 @@ def main():
         logger.configure(folder=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
 
         # SAC - start learning from scratch
-        # model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
-        #      learning_starts=3000, train_freq=16, batch_size=64,
-        #      tau=0.01, ent_coef='auto', target_update_interval=4,
-        #      gradient_steps=4, target_entropy='auto', action_noise=None,
-        #      random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
-        #      _init_setup_model=True, policy_kwargs=policy_kwargs, full_tensorboard_log=True,
-        #      seed=None, n_cpu_tf_sess=None)
+        model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
+             learning_starts=3000, train_freq=16, batch_size=64,
+             tau=0.01, ent_coef='auto', target_update_interval=4,
+             gradient_steps=4, target_entropy='auto', action_noise=None,
+             random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
+             _init_setup_model=True, policy_kwargs=policy_kwargs, full_tensorboard_log=True,
+             seed=None, n_cpu_tf_sess=None)
 
         # Load best model and continue learning
         # models = os.listdir(dir + '/model_dir/sac')
@@ -117,8 +129,8 @@ def main():
         # k = ind[latest_min_ind]
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
-        model = SAC.load(dir + '/model_dir/sac/test_21_17_17_10.zip',
-                         env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0))
+        # model = SAC.load(dir + '/model_dir/sac/test_21_17_17_10.zip',
+        #                  env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0))
 
         # learn
         model.learn(total_timesteps=num_timesteps, callback=save_fn)
