@@ -126,6 +126,7 @@ class BaseEnv(gym.Env):
     def do_action(self, action):
         rospy.logdebug(self.joyactions)
         joymessage = Joy()
+        # action = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.}  # drive forwards # DEBUG
         # self.setDebugAction(action) # DEBUG
         self.clipAction(action)  # clip actions to fit action_size
         joymessage.axes = [self.joyactions["0"], 0., self.joyactions["2"], self.joyactions["3"], self.joyactions["4"], self.joyactions["5"], 0., 0.]
@@ -146,8 +147,8 @@ class BaseEnv(gym.Env):
 
 
     def debugAction(self):
-        # actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.}  # drive forwards
-        actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": 1.}  # don't move
+        actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.}  # drive forwards
+        # actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": 1.}  # don't move
         return actionValues
 
     def clipAction(self, agent_action):
@@ -201,6 +202,12 @@ class BaseEnv(gym.Env):
         self.simOn = False
         self.numStones = numStones
 
+        # For time step
+        self.current_time = time.time()
+        self.last_time = self.current_time
+        self.time_step = []
+        self.last_obs = np.array([])
+        self.TIME_STEP = 0.01 # 10 mili-seconds
         # For boarders limit
         # PushEnv
         self.desired_stone_pose = [137, -277]
@@ -255,7 +262,6 @@ class BaseEnv(gym.Env):
         #        stone<id>: pose:(x,y,z), isLoaded:bool]
         # TODO: update all limits
 
-
         min_pos = np.array(3*[-500.])
         max_pos = np.array(3*[ 500.]) # size of ground in Unity - TODO: update to room size
         min_quat = np.array(4*[-1.])
@@ -299,7 +305,7 @@ class BaseEnv(gym.Env):
     #     return stone_dict
 
 
-    def current_obs(self):
+    def _current_obs(self):
         # rospy.loginfo(self.world_state)
 
         # SPACES DICT - fit current obs data to obs_space.Dict structure
@@ -323,6 +329,21 @@ class BaseEnv(gym.Env):
             obs = np.concatenate((obs, self.world_state[key]), axis=None)
         for ind in range(1, self.numStones + 1):
             obs = np.concatenate((obs, self.stones['StonePos'+str(ind)]), axis=None)
+
+        return obs
+
+
+    def current_obs(self):
+        # wait for sim to update and obs to be different than last obs
+
+        obs = self._current_obs()
+        while True:
+            if np.array_equal(obs, self.last_obs):
+                obs = self._current_obs()
+            else:
+                break
+
+        self.last_obs = obs
 
         return obs
 
@@ -377,7 +398,7 @@ class BaseEnv(gym.Env):
             self.blade_down()
 
         # get observation from simulation
-        obs = self.current_obs()
+        obs = self._current_obs()
         # rospy.loginfo(obs)
 
         return obs
@@ -385,6 +406,23 @@ class BaseEnv(gym.Env):
 
     def step(self, action):
         # rospy.loginfo('step func called')
+
+        self.current_time = time.time()
+        time_step = self.current_time - self.last_time
+
+        if time_step < self.TIME_STEP:
+            time.sleep(self.TIME_STEP - time_step)
+            self.current_time = time.time()
+            time_step = self.current_time - self.last_time
+        # elif time_step > (2*self.TIME_STEP) and self.steps > 0:
+        #     print('pause')
+
+        self.time_step.append(time_step)
+        self.last_time = self.current_time
+
+        # DEBUG
+        # if self.steps == 300:
+        #     print('pause')
 
         # send action to simulation
         self.do_action(action)
@@ -470,16 +508,13 @@ class BaseEnv(gym.Env):
         obs = self.reset()
         # rospy.loginfo(obs)
         done = False
-        # while not done:
-        for _ in range(20000):
-            if self.steps < 10000:
+        for _ in range(10000):
+            while not done:
                 action = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.} # drive forwards
                 obs, _, done, _ = self.step(action)
-            # rospy.loginfo(obs)
-            # self.rate.sleep()
-            else:
-                action = {"0": 0., "2": 1., "3": 0., "4": 0., "5": 1.} # don't move
-                obs, _, done, _ = self.step(action)
+                # rospy.loginfo(obs)
+                # self.rate.sleep()
+
 
 
 class PickUpEnv(BaseEnv):
@@ -748,7 +783,7 @@ class PushStonesEnv(BaseEnv):
             self.episode.killSimulation()
             self.simOn = False
 
-        MAX_STEPS = 30000 # 20000 # 16000 # 8000
+        MAX_STEPS = 5000 # 30000 # 20000 # 16000 # 8000
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
@@ -764,7 +799,7 @@ class PushStonesEnv(BaseEnv):
             print('----------------', reset, '----------------')
             # final_reward = FINAL_REWARD*MAX_STEPS/self.steps
             final_reward = FINAL_REWARD
-            print('----------------', str(final_reward), '----------------')
+            # print('----------------', str(final_reward), '----------------')
             self.episode.killSimulation()
             self.simOn = False
 

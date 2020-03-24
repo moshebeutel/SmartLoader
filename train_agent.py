@@ -35,8 +35,7 @@ def save_fn(_locals, _globals):
             print("Saving new best model")
             model.save(best_model_path + '_rew_' + str(np.round(best_mean_reward, 2)))
         model.save(
-            last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
-                time.localtime().tm_min))
+            last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(time.localtime().tm_min))
     n_steps += 1
     pass
 
@@ -47,28 +46,24 @@ def main():
     env = gym.make(mission + '-v0').unwrapped
     train_model = True
 
-    # Create log dir
+    # Create log and model dir
     dir = 'stable_bl/' + mission
     os.makedirs(dir + '/model_dir/sac', exist_ok=True)
 
     if train_model:
-
-        # for k in range(10):
-
         # create new folder
-        try:
-            tests = os.listdir(dir + '/log_dir/sac')
-            indexes = []
-            for item in tests:
-                indexes.append(int(item[5:]))
-            k = max(indexes) + 1
-            # k = max(indexes)
+        # try:
+        tests = os.listdir(dir + '/model_dir/sac')
+        indexes = []
+        for item in tests:
+            indexes.append(int(item.split('_')[1]))
+        k = max(indexes) + 1
 
-        except FileNotFoundError:
-            os.makedirs(dir + '/log_dir/sac')
-            k = 0
+        # except FileNotFoundError:
+        #     os.makedirs(dir + '/log_dir/sac')
+        #     k = 0
 
-        model_dir = dir + '/model_dir/sac/test_{}'.format(str(k))
+        model_dir = os.getcwd() + '/' + dir + '/model_dir/sac/test_{}'.format(str(k))
 
         best_model_path = model_dir
         last_model_path = model_dir
@@ -117,7 +112,8 @@ def main():
         # k = ind[latest_min_ind]
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
-        model = SAC.load(dir + '/model_dir/sac/test_22_23_14_48.zip',
+
+        model = SAC.load(dir + '/model_dir/sac/test_13_16_10_1.zip',
                          env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0, learning_rate=2e-4))
 
         # learn
