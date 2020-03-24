@@ -117,8 +117,8 @@ def main():
         # k = ind[latest_min_ind]
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
-        model = SAC.load(dir + '/model_dir/sac/test_21_17_17_10.zip',
-                         env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0))
+        model = SAC.load(dir + '/model_dir/sac/test_22_23_14_48.zip',
+                         env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0, learning_rate=2e-4, train_freq=50))
 
         # learn
         model.learn(total_timesteps=num_timesteps, callback=save_fn)
@@ -136,7 +136,7 @@ def main():
 
     else:
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_21_17_17_10.zip', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_22_23_14_48.zip', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
         for _ in range(2):
 

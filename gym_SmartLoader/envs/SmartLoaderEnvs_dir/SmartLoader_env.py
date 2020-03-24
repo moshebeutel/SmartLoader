@@ -127,7 +127,6 @@ class BaseEnv(gym.Env):
         rospy.logdebug(self.joyactions)
         joymessage = Joy()
         # self.setDebugAction(action) # DEBUG
-        # clipped_action = self.clipAction(action) # clip actions to fit action_size
         self.clipAction(action)  # clip actions to fit action_size
         joymessage.axes = [self.joyactions["0"], 0., self.joyactions["2"], self.joyactions["3"], self.joyactions["4"], self.joyactions["5"], 0., 0.]
 
@@ -147,7 +146,8 @@ class BaseEnv(gym.Env):
 
 
     def debugAction(self):
-        actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.}  # drive forwards
+        # actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.}  # drive forwards
+        actionValues = {"0": 0., "2": 1., "3": 0., "4": 0., "5": 1.}  # don't move
         return actionValues
 
     def clipAction(self, agent_action):
@@ -314,8 +314,8 @@ class BaseEnv(gym.Env):
 
         # SPACES BOX - fit current obs data to obs_space.Box structure
         obs = np.array([])
-        keys = {'VehiclePos', 'VehicleOrien', 'VehicleLinearVel', 'VehicleAngularVel',
-                'ArmHeight', 'BladeOrien', 'BladeAngularVel', 'BladeLinearAcc'}
+        keys = ['VehiclePos', 'VehicleOrien', 'VehicleLinearVel', 'VehicleAngularVel',
+                'ArmHeight', 'BladeOrien', 'BladeAngularVel', 'BladeLinearAcc']
         while True: # wait for all topics to arrive
             if all(key in self.world_state for key in keys):
                 break
@@ -352,7 +352,7 @@ class BaseEnv(gym.Env):
         # wait for simulation to set up
         while True: # wait for all topics to arrive
             # change to 2*numStones when IsLoaded is fixed
-            if bool(self.world_state) and bool(self.stones) and len(self.stones) >= self.numStones:
+            if bool(self.world_state) and bool(self.stones): # and len(self.stones) >= self.numStones:
                 break
 
         # wait for simulation to stabilize, stones stop moving
@@ -372,13 +372,13 @@ class BaseEnv(gym.Env):
         # For boarders limit
         self.boarders = self.scene_boarders()
 
-        # get observation from simulation
-        obs = self.current_obs()
-        # rospy.loginfo(obs)
-
         # blade down near ground
         for _ in range(32000):
             self.blade_down()
+
+        # get observation from simulation
+        obs = self.current_obs()
+        # rospy.loginfo(obs)
 
         return obs
 
@@ -468,13 +468,18 @@ class BaseEnv(gym.Env):
     def run(self):
         # DEBUG
         obs = self.reset()
-        rospy.loginfo(obs)
+        # rospy.loginfo(obs)
         done = False
-        while not done:
-            action = self.debugAction()
-            obs, _, done, _ = self.step(action)
-            rospy.loginfo(obs)
-            self.rate.sleep()
+        # while not done:
+        for _ in range(20000):
+            if self.steps < 10000:
+                action = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.} # drive forwards
+                obs, _, done, _ = self.step(action)
+            # rospy.loginfo(obs)
+            # self.rate.sleep()
+            else:
+                action = {"0": 0., "2": 1., "3": 0., "4": 0., "5": 1.} # don't move
+                obs, _, done, _ = self.step(action)
 
 
 class PickUpEnv(BaseEnv):
@@ -655,12 +660,12 @@ class PushStonesEnv(BaseEnv):
 
         # initial state depends on environment (mission)
         # send reset to simulation with initial state
-        self.current_stone_dis = {} # distance stone from desired pose
-        self.last_stone_dis = {}
-        self.current_blade_dis = {} # distance blade from stone
-        self.last_blade_dis = {}
-        self.current_stone_middle_blade_dis = 0
-        self.last_stone_middle_blade_dis = 0
+        # self.current_stone_dis = {} # distance stone from desired pose
+        # self.last_stone_dis = {}
+        # self.current_blade_dis = {} # distance blade from stone
+        # self.last_blade_dis = {}
+        # self.current_stone_middle_blade_dis = 0
+        # self.last_stone_middle_blade_dis = 0
         # self.init_dis_blade_stone = self.sqr_dis_blade_stone()
         # self.init_dis_stone_desired_pose = self.sqr_dis_stone_desired_pose()
 
@@ -669,60 +674,62 @@ class PushStonesEnv(BaseEnv):
         # reward = -0.1
         reward = 0
 
-        # BLADE_CLOSER = 0.1
-        # mean_sqr_blade_dis = np.mean(self.sqr_dis_blade_stone())
-        # reward = BLADE_CLOSER / mean_sqr_blade_dis
-        #
-        # STONE_CLOSER = 1
-        # mean_sqr_stone_dis = np.mean(self.sqr_dis_stone_desired_pose())
-        # reward += STONE_CLOSER / mean_sqr_stone_dis
-        #
-        # # for number of stones = 1
+        BLADE_CLOSER = 0.1
+        mean_sqr_blade_dis = np.mean(self.sqr_dis_blade_stone())
+        reward = BLADE_CLOSER / mean_sqr_blade_dis
+
+        STONE_CLOSER = 1
+        mean_sqr_stone_dis = np.mean(self.sqr_dis_stone_desired_pose())
+        reward += STONE_CLOSER / mean_sqr_stone_dis
+
+        # for number of stones = 1
         # STONE_MIDDLE_BLADE = 0.5
         # reward += STONE_MIDDLE_BLADE / self.sqr_dis_optimal_stone_pose()
 
         # # positive reward if stone is closer to desired pose, negative if further away
-        STONE_CLOSER = 10
-        self.current_stone_dis = self.sqr_dis_stone_desired_pose()
-        if bool(self.last_stone_dis): # don't enter first time when last_stone_height is empty
-            diff = [curr - last for curr, last in zip(self.current_stone_dis, self.last_stone_dis)]
-            if any(item < 0 for item in diff): # stone closer
-                reward += STONE_CLOSER / np.mean(self.current_stone_dis)
-            if any(item > 0 for item in diff): # stone further away
-                reward -= STONE_CLOSER / np.mean(self.current_stone_dis)
-            # reward -= STONE_CLOSER*np.mean(diff)
-
-        self.last_stone_dis = self.current_stone_dis
+        # STONE_CLOSER = 10
+        # self.current_stone_dis = self.sqr_dis_stone_desired_pose()
+        # if bool(self.last_stone_dis): # don't enter first time when last_stone_dis is empty
+        #     diff = [curr - last for curr, last in zip(self.current_stone_dis, self.last_stone_dis)]
+        #     if any(item < 0 for item in diff): # stone closer
+        #         reward += STONE_CLOSER / np.mean(self.current_stone_dis)
+        #     # if any(item > 0 for item in diff): # stone further away
+        #     #     reward -= STONE_CLOSER / np.mean(self.current_stone_dis)
+        #     # reward -= STONE_CLOSER*np.mean(diff)
         #
-        #     # if any(True for curr, last in zip(self.current_stone_dis, self.last_stone_dis) if curr < last):
-        #     #     reward += STONE_CLOSER
-        #         # rospy.loginfo('---------------- STONE closer, positive reward +10 ! ----------------')
-
-        # # positive reward if blade is closer to stone's current pose, negative if further away
-        BLADE_CLOSER = 1
-        self.current_blade_dis = self.sqr_dis_blade_stone()
-        if bool(self.last_blade_dis): # don't enter first time when last_stone_height is empty
-            diff = [curr - last for curr, last in zip(self.current_blade_dis, self.last_blade_dis)]
-            if any(item < 0 for item in diff): # blade closer
-                reward += BLADE_CLOSER / np.mean(self.current_blade_dis)
-            if any(item > 0 for item in diff): # blade further away
-                reward -= BLADE_CLOSER / np.mean(self.current_blade_dis)
-            # reward -= BLADE_CLOSER*np.mean(diff)
-
-        self.last_blade_dis = self.current_blade_dis
+        # self.last_stone_dis = self.current_stone_dis
+        # #
+        # #     # if any(True for curr, last in zip(self.current_stone_dis, self.last_stone_dis) if curr < last):
+        # #     #     reward += STONE_CLOSER
+        # #         # rospy.loginfo('---------------- STONE closer, positive reward +10 ! ----------------')
         #
-        #     if any(True for curr, last in zip(self.current_blade_dis, self.last_blade_dis) if curr < last):
-        #         reward += BLADE_CLOSER
-        #         # rospy.loginfo('----------------  BLADE closer, positive reward +1 ! ----------------')
-
-        # for number of stones = 1
-        STONE_MIDDLE_BLADE = 1
-        self.current_stone_middle_blade_dis = self.sqr_dis_optimal_stone_pose()
-        diff = self.current_stone_middle_blade_dis - self.last_stone_middle_blade_dis
-        if diff < 0:
-            reward += STONE_MIDDLE_BLADE / self.current_stone_middle_blade_dis
-        if diff > 0:
-            reward -= STONE_MIDDLE_BLADE / self.current_stone_middle_blade_dis
+        # # # positive reward if blade is closer to stone's current pose, negative if further away
+        # BLADE_CLOSER = 1
+        # self.current_blade_dis = self.sqr_dis_blade_stone()
+        # if bool(self.last_blade_dis): # don't enter first time when last_blade_dis is empty
+        #     diff = [curr - last for curr, last in zip(self.current_blade_dis, self.last_blade_dis)]
+        #     if any(item < 0 for item in diff): # blade closer
+        #         reward += BLADE_CLOSER / np.mean(self.current_blade_dis)
+        #     if any(item > 0 for item in diff): # blade further away
+        #         reward -= BLADE_CLOSER / np.mean(self.current_blade_dis)
+        #     # reward -= BLADE_CLOSER*np.mean(diff)
+        #
+        # self.last_blade_dis = self.current_blade_dis
+        # #
+        # #     if any(True for curr, last in zip(self.current_blade_dis, self.last_blade_dis) if curr < last):
+        # #         reward += BLADE_CLOSER
+        # #         # rospy.loginfo('----------------  BLADE closer, positive reward +1 ! ----------------')
+        #
+        # # for number of stones = 1
+        # STONE_MIDDLE_BLADE = 0.5
+        # self.current_stone_middle_blade_dis = self.sqr_dis_optimal_stone_pose()
+        # diff = self.current_stone_middle_blade_dis - self.last_stone_middle_blade_dis
+        # if diff < 0:
+        #     reward += STONE_MIDDLE_BLADE / self.current_stone_middle_blade_dis
+        # if diff > 0:
+        #     reward -= STONE_MIDDLE_BLADE / self.current_stone_middle_blade_dis
+        #
+        # self.last_stone_middle_blade_dis = self.current_stone_middle_blade_dis
 
         return reward
 
@@ -732,7 +739,7 @@ class PushStonesEnv(BaseEnv):
         reset = 'No'
         final_reward = 0
 
-        FINAL_REWARD = 10000
+        FINAL_REWARD = 1000
         if self.out_of_boarders():
             done = True
             reset = 'out of boarders'
@@ -746,7 +753,7 @@ class PushStonesEnv(BaseEnv):
             done = True
             reset = 'limit time steps'
             print('----------------', reset, '----------------')
-            final_reward = - FINAL_REWARD
+            # final_reward = - FINAL_REWARD
             self.episode.killSimulation()
             self.simOn = False
 
@@ -755,7 +762,8 @@ class PushStonesEnv(BaseEnv):
             done = True
             reset = 'sim success'
             print('----------------', reset, '----------------')
-            final_reward = 100*FINAL_REWARD*MAX_STEPS/self.steps
+            # final_reward = FINAL_REWARD*MAX_STEPS/self.steps
+            final_reward = FINAL_REWARD
             print('----------------', str(final_reward), '----------------')
             self.episode.killSimulation()
             self.simOn = False
@@ -858,5 +866,5 @@ class PushStonesEnv(BaseEnv):
 #     # # It will check your custom environment and output additional warnings if needed
 #     # check_env(env)
 #
-#     node = PickUpEnv(2)
+#     node = PushStonesEnv(1)
 #     node.run()
