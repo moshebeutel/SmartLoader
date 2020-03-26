@@ -208,9 +208,8 @@ class BaseEnv(gym.Env):
         self.time_step = []
         self.last_obs = np.array([])
         self.TIME_STEP = 0.01 # 10 mili-seconds
-        # For boarders limit
-        # PushEnv
-        self.desired_stone_pose = [137, -277]
+
+        self.normalized = True
 
         ## ROS messages
         rospy.init_node('slagent', anonymous=False)
@@ -326,9 +325,15 @@ class BaseEnv(gym.Env):
             if all(key in self.world_state for key in keys):
                 break
         for key in keys:
-            obs = np.concatenate((obs, self.world_state[key]), axis=None)
+            item = np.copy(self.world_state[key])
+            if self.normalized and key == 'VehiclePos':
+                item -= self.desired_stone_pose
+            obs = np.concatenate((obs, item), axis=None)
         for ind in range(1, self.numStones + 1):
-            obs = np.concatenate((obs, self.stones['StonePos'+str(ind)]), axis=None)
+            item = np.copy(self.stones['StonePos' + str(ind)])
+            if self.normalized:
+                item -= self.desired_stone_pose
+            obs = np.concatenate((obs, item), axis=None)
 
         return obs
 
@@ -391,6 +396,13 @@ class BaseEnv(gym.Env):
         #         break
 
         # For boarders limit
+        # PushEnv
+        MAX_DESIRED_DIS = 5
+        self.stone_dis = np.random.randint(2, MAX_DESIRED_DIS)
+        stone_init_pos = np.copy(self.stones['StonePos1'])
+        self.desired_stone_pose = stone_init_pos
+        self.desired_stone_pose[0] += self.stone_dis
+
         self.boarders = self.scene_boarders()
 
         # blade down near ground
@@ -398,7 +410,7 @@ class BaseEnv(gym.Env):
             self.blade_down()
 
         # get observation from simulation
-        obs = self._current_obs()
+        obs = self._current_obs() # without waiting for obs to updated
         # rospy.loginfo(obs)
 
         return obs
@@ -438,7 +450,9 @@ class BaseEnv(gym.Env):
 
         step_reward = r_t + final_reward
         self.total_reward = self.total_reward + step_reward
-        # print('total reward = ', self.total_reward)
+        # print('reward = ', r_t)
+        if done:
+            print('stone to desired distance =', self.stone_dis, ', total reward = ', self.total_reward)
 
         info = {"state": obs, "action": action, "reward": self.total_reward, "step": self.steps, "reset reason": reset}
 
@@ -461,7 +475,7 @@ class BaseEnv(gym.Env):
             stones_box = self.containing_box(stones_box, self.pose_to_box(init_stone_pose, box=1))
 
         scene_boarders = self.containing_box(vehicle_box, stones_box)
-        scene_boarders = self.containing_box(scene_boarders, self.pose_to_box(self.desired_stone_pose, box=2))
+        scene_boarders = self.containing_box(scene_boarders, self.pose_to_box(self.desired_stone_pose[0:2], box=2))
 
         return scene_boarders
 
@@ -483,7 +497,8 @@ class BaseEnv(gym.Env):
     def out_of_boarders(self):
         # check if vehicle is out of scene boarders
         boarders = self.boarders
-        curr_vehicle_pose = self.world_state['VehiclePos']
+        curr_vehicle_pose = np.copy(self.world_state['VehiclePos'])
+
         # if self.steps < 2:
         #     print(boarders)
         #     print(curr_vehicle_pose)
@@ -493,6 +508,7 @@ class BaseEnv(gym.Env):
             return True
         else:
             return False
+
 
     def reward_func(self):
         raise NotImplementedError
@@ -707,7 +723,7 @@ class PushStonesEnv(BaseEnv):
     def reward_func(self):
         # reward per step
         # reward = -0.1
-        reward = 0
+        # reward = 0
 
         BLADE_CLOSER = 0.1
         mean_sqr_blade_dis = np.mean(self.sqr_dis_blade_stone())
@@ -716,6 +732,10 @@ class PushStonesEnv(BaseEnv):
         STONE_CLOSER = 1
         mean_sqr_stone_dis = np.mean(self.sqr_dis_stone_desired_pose())
         reward += STONE_CLOSER / mean_sqr_stone_dis
+
+        # STONE_CLOSER = 0.1
+        # diff_from_init_dis = self.init_dis_stone_desired_pose - np.mean(self.sqr_dis_stone_desired_pose())
+        # reward += STONE_CLOSER*diff_from_init_dis
 
         # for number of stones = 1
         # STONE_MIDDLE_BLADE = 0.5
@@ -783,12 +803,13 @@ class PushStonesEnv(BaseEnv):
             self.episode.killSimulation()
             self.simOn = False
 
-        MAX_STEPS = 5000 # 30000 # 20000 # 16000 # 8000
+        # MAX_STEPS = 3000 # 30000 # 20000 # 16000 # 8000
+        MAX_STEPS = 750*self.stone_dis
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
             print('----------------', reset, '----------------')
-            # final_reward = - FINAL_REWARD
+            final_reward = - FINAL_REWARD
             self.episode.killSimulation()
             self.simOn = False
 
@@ -797,8 +818,8 @@ class PushStonesEnv(BaseEnv):
             done = True
             reset = 'sim success'
             print('----------------', reset, '----------------')
-            # final_reward = FINAL_REWARD*MAX_STEPS/self.steps
-            final_reward = FINAL_REWARD
+            final_reward = FINAL_REWARD*MAX_STEPS/self.steps
+            # final_reward = FINAL_REWARD
             # print('----------------', str(final_reward), '----------------')
             self.episode.killSimulation()
             self.simOn = False
@@ -813,7 +834,7 @@ class PushStonesEnv(BaseEnv):
         sqr_dis = []
         for stone in range(1, self.numStones + 1):
             current_pos = self.stones['StonePos' + str(stone)][0:2]
-            sqr_dis.append(self.squared_dis(current_pos, self.desired_stone_pose))
+            sqr_dis.append(self.squared_dis(current_pos, self.desired_stone_pose[0:2]))
 
         return sqr_dis
 
@@ -823,7 +844,7 @@ class PushStonesEnv(BaseEnv):
         success = False
         sqr_dis = self.sqr_dis_stone_desired_pose()
 
-        TOLERANCE = 2.0
+        TOLERANCE = 1.0
         if all(item < TOLERANCE for item in sqr_dis):
             success = True
 

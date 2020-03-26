@@ -76,13 +76,13 @@ def main():
         logger.configure(folder=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
 
         # SAC - start learning from scratch
-        # model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
-        #      learning_starts=3000, train_freq=16, batch_size=64,
-        #      tau=0.01, ent_coef='auto', target_update_interval=4,
-        #      gradient_steps=4, target_entropy='auto', action_noise=None,
-        #      random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
-        #      _init_setup_model=True, policy_kwargs=policy_kwargs, full_tensorboard_log=True,
-        #      seed=None, n_cpu_tf_sess=None)
+        model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
+             learning_starts=3000, train_freq=1, batch_size=64,
+             tau=0.01, ent_coef='auto', target_update_interval=1,
+             gradient_steps=1, target_entropy='auto', action_noise=None,
+             random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
+             _init_setup_model=True, policy_kwargs=policy_kwargs, full_tensorboard_log=True,
+             seed=None, n_cpu_tf_sess=None)
 
         # Load best model and continue learning
         # models = os.listdir(dir + '/model_dir/sac')
@@ -113,8 +113,11 @@ def main():
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
 
-        model = SAC.load(dir + '/model_dir/sac/test_13_16_10_1.zip',
-                         env=env, tensorboard_log=log_dir, custom_objects=dict(learning_starts=0, learning_rate=2e-4))
+        # model = SAC.load(dir + '/model_dir/sac/test_25_25_14_15.zip',
+        #                  env=env, tensorboard_log=log_dir,
+        #                  custom_objects=dict(learning_starts=0, learning_rate=2e-4,
+        #                                      train_freq=8, gradient_steps=2,
+        #                                      batch_size=32))
 
         # learn
         model.learn(total_timesteps=num_timesteps, callback=save_fn)
@@ -132,7 +135,7 @@ def main():
 
     else:
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_22_23_14_48.zip', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_25_25_14_15', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
         for _ in range(2):
 
