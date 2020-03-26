@@ -342,9 +342,13 @@ class BaseEnv(gym.Env):
         # wait for sim to update and obs to be different than last obs
 
         obs = self._current_obs()
+        # counter = 0
         while True:
             if np.array_equal(obs, self.last_obs):
                 obs = self._current_obs()
+                # counter =+ 1
+                # if counter > 2:
+                #     print('pause')
             else:
                 break
 
@@ -397,8 +401,9 @@ class BaseEnv(gym.Env):
 
         # For boarders limit
         # PushEnv
-        MAX_DESIRED_DIS = 5
-        self.stone_dis = np.random.randint(2, MAX_DESIRED_DIS)
+        # MAX_DESIRED_DIS = 5
+        # self.stone_dis = np.random.randint(3, MAX_DESIRED_DIS + 1)
+        self.stone_dis = 3
         stone_init_pos = np.copy(self.stones['StonePos1'])
         self.desired_stone_pose = stone_init_pos
         self.desired_stone_pose[0] += self.stone_dis
@@ -406,7 +411,7 @@ class BaseEnv(gym.Env):
         self.boarders = self.scene_boarders()
 
         # blade down near ground
-        for _ in range(32000):
+        for _ in range(30000):
             self.blade_down()
 
         # get observation from simulation
