@@ -44,7 +44,7 @@ def main():
     global model, best_model_path, last_model_path
     mission = 'PushStonesEnv' # Change according to algorithm
     env = gym.make(mission + '-v0').unwrapped
-    train_model = False
+    train_model = True
 
     # Create log and model dir
     dir = 'stable_bl/' + mission
@@ -113,11 +113,11 @@ def main():
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
 
-        model = SAC.load(dir + '/model_dir/sac/test_30_26_16_24.zip',
+        model = SAC.load(dir + '/model_dir/sac/test_42_31_14_6.zip',
                          env=env, tensorboard_log=log_dir,
-                         custom_objects=dict(learning_starts=0, learning_rate=4e-4,
-                                             buffer_size=100000))
-                                             # train_freq=8, gradient_steps=2,
+                         custom_objects=dict(learning_starts=0, learning_rate=1e-4,
+                                             buffer_size=500000,
+                                             train_freq=16, gradient_steps=4, target_update_interval=4))
                                              # batch_size=32))
 
         # learn
@@ -136,9 +136,9 @@ def main():
 
     else:
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_31_26_17_43.zip', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_44_31_16_42', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
-        for _ in range(2):
+        for _ in range(4):
 
             obs = env.reset()
             done = False

@@ -362,7 +362,7 @@ class BaseEnv(gym.Env):
             self.episode.killSimulation()
 
         self.episode = EpisodeManager()
-        self.episode.generateAndRunWholeEpisode(typeOfRand="verybasic")
+        self.episode.generateAndRunWholeEpisode(typeOfRand="verybasic") # for NUM_STONES = 1
         self.simOn = True
 
 
@@ -401,17 +401,19 @@ class BaseEnv(gym.Env):
 
         # For boarders limit
         # PushEnv
-        # MAX_DESIRED_DIS = 5
-        # self.stone_dis = np.random.randint(3, MAX_DESIRED_DIS + 1)
-        self.stone_dis = 3
+        self.stone_dis = np.random.uniform(4, 8)
+        # self.stone_dis = 4
         stone_init_pos = np.copy(self.stones['StonePos1'])
         self.desired_stone_pose = stone_init_pos
         self.desired_stone_pose[0] += self.stone_dis
 
         self.boarders = self.scene_boarders()
 
-        # blade down near ground
-        for _ in range(30000):
+        # # blade down near ground
+        # for _ in range(30000):
+        #     self.blade_down()
+        DESIRED_BLADE_HEIGHT = 24
+        while self.world_state['ArmHeight'] > DESIRED_BLADE_HEIGHT:
             self.blade_down()
 
         # get observation from simulation
@@ -480,7 +482,7 @@ class BaseEnv(gym.Env):
             stones_box = self.containing_box(stones_box, self.pose_to_box(init_stone_pose, box=1))
 
         scene_boarders = self.containing_box(vehicle_box, stones_box)
-        scene_boarders = self.containing_box(scene_boarders, self.pose_to_box(self.desired_stone_pose[0:2], box=2))
+        scene_boarders = self.containing_box(scene_boarders, self.pose_to_box(self.desired_stone_pose[0:2], box=1.5)) # box=1
 
         return scene_boarders
 
@@ -724,19 +726,30 @@ class PushStonesEnv(BaseEnv):
         # self.last_stone_middle_blade_dis = 0
         # self.init_dis_blade_stone = self.sqr_dis_blade_stone()
         # self.init_dis_stone_desired_pose = self.sqr_dis_stone_desired_pose()
+        self._prev_mean_sqr_blade_dis = 9
+        self._prev_mean_sqr_stone_dis = 16
 
     def reward_func(self):
         # reward per step
         # reward = -0.1
         # reward = 0
 
+
+        # reward for getting the blade closer to stone
         BLADE_CLOSER = 0.1
         mean_sqr_blade_dis = np.mean(self.sqr_dis_blade_stone())
-        reward = BLADE_CLOSER / mean_sqr_blade_dis
+        # reward = BLADE_CLOSER / mean_sqr_blade_dis
+        reward = BLADE_CLOSER * (self._prev_mean_sqr_blade_dis - mean_sqr_blade_dis)
 
+        # reward for getting the stone closer to target
         STONE_CLOSER = 1
         mean_sqr_stone_dis = np.mean(self.sqr_dis_stone_desired_pose())
-        reward += STONE_CLOSER / mean_sqr_stone_dis
+        # reward += STONE_CLOSER / mean_sqr_stone_dis
+        reward += STONE_CLOSER * (self._prev_mean_sqr_stone_dis - mean_sqr_stone_dis)
+
+        # update prevs
+        self._prev_mean_sqr_blade_dis = mean_sqr_blade_dis
+        self._prev_mean_sqr_stone_dis = mean_sqr_stone_dis
 
         # STONE_CLOSER = 0.1
         # diff_from_init_dis = self.init_dis_stone_desired_pose - np.mean(self.sqr_dis_stone_desired_pose())
@@ -799,7 +812,7 @@ class PushStonesEnv(BaseEnv):
         reset = 'No'
         final_reward = 0
 
-        FINAL_REWARD = 1000
+        FINAL_REWARD = 10000
         if self.out_of_boarders():
             done = True
             reset = 'out of boarders'
@@ -809,12 +822,12 @@ class PushStonesEnv(BaseEnv):
             self.simOn = False
 
         # MAX_STEPS = 3000 # 30000 # 20000 # 16000 # 8000
-        MAX_STEPS = 750*self.stone_dis
+        MAX_STEPS = 1000*self.stone_dis # 750*self.stone_dis
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
             print('----------------', reset, '----------------')
-            final_reward = - FINAL_REWARD
+            # final_reward = - FINAL_REWARD
             self.episode.killSimulation()
             self.simOn = False
 
