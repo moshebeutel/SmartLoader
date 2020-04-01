@@ -129,7 +129,7 @@ class BaseEnv(gym.Env):
         # action = {"0": 0., "2": 1., "3": 0., "4": 0., "5": -1.}  # drive forwards # DEBUG
         # self.setDebugAction(action) # DEBUG
         self.clipAction(action)  # clip actions to fit action_size
-        joymessage.axes = [self.joyactions["0"], 0., self.joyactions["2"], self.joyactions["3"], self.joyactions["4"], self.joyactions["5"], 0., 0.]
+        joymessage.axes = [self.joyactions["0"], 0., self.joyactions["2"], 0., 0., self.joyactions["5"], 0., 0.]
 
         # while not rospy.is_shutdown():
         self.pubjoy.publish(joymessage)
@@ -155,8 +155,8 @@ class BaseEnv(gym.Env):
         # translate chosen action (array) to joystick action (dict)
 
         self.joyactions["0"] = agent_action[0] # vehicle turn
-        self.joyactions["3"] = agent_action[2] # blade pitch
-        self.joyactions["4"] = agent_action[3] # arm up/down
+        # self.joyactions["3"] = agent_action[2] # blade pitch
+        # self.joyactions["4"] = agent_action[2] # arm up/down
 
         # clip actions to fit action_size
         # clipped_action = agent_action
@@ -207,7 +207,7 @@ class BaseEnv(gym.Env):
         self.last_time = self.current_time
         self.time_step = []
         self.last_obs = np.array([])
-        self.TIME_STEP = 0.01 # 10 mili-seconds
+        self.TIME_STEP = 0.05 # 10 mili-seconds
 
         self.normalized = True
 
@@ -241,13 +241,14 @@ class BaseEnv(gym.Env):
         self.pubjoy = rospy.Publisher("joy", Joy, queue_size=10)
 
         ## Define gym space
-        min_action = np.array(4*[-1.])
-        max_action = np.array(4*[ 1.])
+        min_action = np.array(2*[-1.])
+        max_action = np.array(2*[ 1.])
         # self.action_size = 4  # all actions
+        # self.action_size = 3 # no pitch
         # self.action_size = 2  # without arm actions
         # self.action_size = 1  # drive only forwards
 
-        self.action_space = spaces.Box(low=min_action,high=max_action)
+        self.action_space = spaces.Box(low=min_action, high=max_action)
         self.observation_space = self.obs_space_init()
 
         # self.init_env()
@@ -285,11 +286,17 @@ class BaseEnv(gym.Env):
         #                         "Stones": spaces.Dict(self.obs_stones())})
 
         # SPACES BOX - WITHOUT IS LOADED
-        low  = np.concatenate((min_pos,min_quat,min_lin_vel,min_ang_vel,min_arm_height,min_quat,min_ang_vel,min_lin_acc), axis=None)
-        high = np.concatenate((max_pos,max_quat,max_lin_vel,max_ang_vel,max_arm_height,max_quat,max_ang_vel,max_lin_acc), axis=None)
+        # low  = np.concatenate((min_pos,min_quat,min_lin_vel,min_ang_vel,min_arm_height,min_quat,min_ang_vel,min_lin_acc), axis=None)
+        # high = np.concatenate((max_pos,max_quat,max_lin_vel,max_ang_vel,max_arm_height,max_quat,max_ang_vel,max_lin_acc), axis=None)
+
+        # NEW SMALLER STATE SPACE:
+        # ["VehiclePos","VehicleOrien","VehicleLinearVel","VehicleAngularVel","VehicleLinearAccIMU","Stones"]
+        low  = np.concatenate((min_pos, min_quat, min_lin_vel, min_ang_vel, min_lin_acc, min_arm_height))
+        high = np.concatenate((max_pos, max_quat, max_lin_vel, max_ang_vel, max_lin_acc, max_arm_height))
+
         for ind in range(1, self.numStones + 1):
-            low  = np.concatenate((low,min_pos), axis=None)
-            high = np.concatenate((high,max_pos), axis=None)
+            low  = np.concatenate((low, min_pos), axis=None)
+            high = np.concatenate((high, max_pos), axis=None)
         obsSpace = spaces.Box(low=low, high=high)
 
         return obsSpace
@@ -319,15 +326,17 @@ class BaseEnv(gym.Env):
 
         # SPACES BOX - fit current obs data to obs_space.Box structure
         obs = np.array([])
-        keys = ['VehiclePos', 'VehicleOrien', 'VehicleLinearVel', 'VehicleAngularVel',
-                'ArmHeight', 'BladeOrien', 'BladeAngularVel', 'BladeLinearAcc']
+        # keys = ['VehiclePos', 'VehicleOrien', 'VehicleLinearVel', 'VehicleAngularVel',
+        #         'ArmHeight', 'BladeOrien', 'BladeAngularVel', 'BladeLinearAcc']
+        keys = ['VehiclePos', 'VehicleOrien', 'VehicleLinearVel', 'VehicleAngularVel', 'VehicleLinearAccIMU', 'ArmHeight']
         while True: # wait for all topics to arrive
             if all(key in self.world_state for key in keys):
                 break
         for key in keys:
             item = np.copy(self.world_state[key])
             if self.normalized and key == 'VehiclePos':
-                item -= self.desired_stone_pose
+                # item -= self.desired_stone_pose
+                item -= self.stones['StonePos1'] # for NUM STONES =1
             obs = np.concatenate((obs, item), axis=None)
         for ind in range(1, self.numStones + 1):
             item = np.copy(self.stones['StonePos' + str(ind)])
@@ -342,13 +351,9 @@ class BaseEnv(gym.Env):
         # wait for sim to update and obs to be different than last obs
 
         obs = self._current_obs()
-        # counter = 0
         while True:
-            if np.array_equal(obs, self.last_obs):
+            if np.array_equal(obs[0:7], self.last_obs[0:7]): # vehicle position and orientation
                 obs = self._current_obs()
-                # counter =+ 1
-                # if counter > 2:
-                #     print('pause')
             else:
                 break
 
@@ -401,7 +406,7 @@ class BaseEnv(gym.Env):
 
         # For boarders limit
         # PushEnv
-        self.stone_dis = np.random.uniform(4, 8)
+        self.stone_dis = np.random.uniform(2, 5)
         # self.stone_dis = 4
         stone_init_pos = np.copy(self.stones['StonePos1'])
         self.desired_stone_pose = stone_init_pos
@@ -412,8 +417,8 @@ class BaseEnv(gym.Env):
         # # blade down near ground
         # for _ in range(30000):
         #     self.blade_down()
-        DESIRED_BLADE_HEIGHT = 24
-        while self.world_state['ArmHeight'] > DESIRED_BLADE_HEIGHT:
+        DESIRED_ARM_HEIGHT = 22
+        while self.world_state['ArmHeight'] > DESIRED_ARM_HEIGHT:
             self.blade_down()
 
         # get observation from simulation
@@ -467,9 +472,9 @@ class BaseEnv(gym.Env):
 
     def blade_down(self):
         # take blade down near ground at beginning of episode
-        joymessage = Joy()
-        joymessage.axes = [0., 0., 1., 0., -1., 1., 0., 0.]
-        self.pubjoy.publish(joymessage)
+            joymessage = Joy()
+            joymessage.axes = [0., 0., 1., 0., -0.3, 1., 0., 0.]
+            self.pubjoy.publish(joymessage)
 
     def scene_boarders(self):
         # define scene boarders depending on vehicle and stone initial positions and desired pose
@@ -727,13 +732,12 @@ class PushStonesEnv(BaseEnv):
         # self.init_dis_blade_stone = self.sqr_dis_blade_stone()
         # self.init_dis_stone_desired_pose = self.sqr_dis_stone_desired_pose()
         self._prev_mean_sqr_blade_dis = 9
-        self._prev_mean_sqr_stone_dis = 16
+        self._prev_mean_sqr_stone_dis = 9
 
     def reward_func(self):
         # reward per step
         # reward = -0.1
         # reward = 0
-
 
         # reward for getting the blade closer to stone
         BLADE_CLOSER = 0.1
@@ -812,7 +816,7 @@ class PushStonesEnv(BaseEnv):
         reset = 'No'
         final_reward = 0
 
-        FINAL_REWARD = 10000
+        FINAL_REWARD = 1000
         if self.out_of_boarders():
             done = True
             reset = 'out of boarders'
@@ -822,7 +826,7 @@ class PushStonesEnv(BaseEnv):
             self.simOn = False
 
         # MAX_STEPS = 3000 # 30000 # 20000 # 16000 # 8000
-        MAX_STEPS = 1000*self.stone_dis # 750*self.stone_dis
+        MAX_STEPS = 2000*self.stone_dis # 750*self.stone_dis
         if self.steps > MAX_STEPS:
             done = True
             reset = 'limit time steps'
@@ -862,7 +866,7 @@ class PushStonesEnv(BaseEnv):
         success = False
         sqr_dis = self.sqr_dis_stone_desired_pose()
 
-        TOLERANCE = 1.0
+        TOLERANCE = 0.5
         if all(item < TOLERANCE for item in sqr_dis):
             success = True
 

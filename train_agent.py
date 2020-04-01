@@ -68,7 +68,7 @@ def main():
         best_model_path = model_dir
         last_model_path = model_dir
 
-        num_timesteps = int(2e5)
+        num_timesteps = int(3e5)
 
         policy_kwargs = dict(layers=[64, 64, 64])
 
@@ -113,11 +113,10 @@ def main():
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
 
-        model = SAC.load(dir + '/model_dir/sac/test_42_31_14_6.zip',
+        model = SAC.load(dir + '/model_dir/sac/test_49_rew_21922.7',
                          env=env, tensorboard_log=log_dir,
-                         custom_objects=dict(learning_starts=0, learning_rate=1e-4,
-                                             buffer_size=500000,
-                                             train_freq=16, gradient_steps=4, target_update_interval=4))
+                         custom_objects=dict(learning_starts=0, learning_rate=4e-4,
+                                             train_freq=1, gradient_steps=1, target_update_interval=1))
                                              # batch_size=32))
 
         # learn
@@ -136,7 +135,7 @@ def main():
 
     else:
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_44_31_16_42', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_41_31_11_50', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
         for _ in range(4):
 
