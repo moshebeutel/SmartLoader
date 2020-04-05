@@ -4,8 +4,8 @@ import os
 from stable_baselines.sac.policies import MlpPolicy as sac_MlpPolicy
 from stable_baselines.ddpg.policies import MlpPolicy as ddpg_MlpPolicy
 from stable_baselines.common.policies import MlpPolicy as Common_MlpPolicy
+
 from stable_baselines.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, AdaptiveParamNoiseSpec
-from stable_baselines.gail import ExpertDataset
 from stable_baselines import TRPO
 from stable_baselines import DDPG
 from stable_baselines import PPO1
@@ -16,8 +16,7 @@ import gym
 import gym_SmartLoader.envs
 import time
 import numpy as np
-from typing import Dict
-from tempfile import TemporaryFile
+import csv
 
 n_steps = 0
 save_interval = 2000
@@ -41,40 +40,36 @@ def save_fn(_locals, _globals):
     n_steps += 1
     pass
 
-def expert_dataset(name):
-    # Benny's recordings to dict
-    path = os.getcwd() + '/' + name
-    numpy_dict = {
-        'actions': np.load(path + '/act.npy'),
-        'obs': np.load(path + '/obs.npy'),
-        'rewards': np.load(path + '/rew.npy'),
-        'episode_returns': np.load(path + '/ep_ret.npy'),
-        'episode_starts': np.load(path + '/ep_str.npy')
-    } # type: Dict[str, np.ndarray]
 
-    # for key, val in numpy_dict.items():
-    #     print(key, val.shape)
+def data_saver(obs, actions, step_rewards, dones, episode_rewards):
 
-    # dataset = TemporaryFile()
-    save_path = os.getcwd() + '/dataset'
-    os.makedirs(save_path)
-    np.savez(save_path, **numpy_dict)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/obs', obs)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/actions', act)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/rewards', rew)
 
+    starts = [False] * len(dones)
+    starts[0] = True
+
+    for i in range(len(dones) - 1):
+        if dones[i]:
+            starts[i + 1] = True
+
+    np.save('/home/graphics/git/SmartLoader/saved_ep/episode_starts', ep_str)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/episode_returns', ep_rew)
 
 def main():
     global model, best_model_path, last_model_path
-    mission = 'PushStonesEnv' # Change according to algorithm
-    env = gym.make(mission + '-v0').unwrapped
-    jobs = ['train', 'play']
+
+
+    jobs = ['train', 'record', 'BC_agent' , 'play']
+
     job = jobs[0]
-    pretrain = True
 
     # Create log and model dir
-    # dir = 'stable_bl/' + mission
-    dir = 'stable_bl/PushMultipleStones'
-    os.makedirs(dir + '/model_dir/sac', exist_ok=True)
+
 
     if job == 'train':
+
         # create new folder
         try:
             tests = os.listdir(dir + '/model_dir/sac')
@@ -182,12 +177,56 @@ def main():
         # model.learn(total_timesteps=500000)
         # model.save(log_dir)
 
+    elif job == 'record':
+
+        # mission = 'PushStonesRecorder'  # Change according to algorithm
+        mission = 'PushStonesEnv'
+        env = gym.make(mission + '-v0').unwrapped
+
+        num_episodes = 40
+
+        obs = []
+        actions = []
+        rewards = []
+        dones = []
+        episode_rewards = []
+
+        for episode in range(num_episodes):
+
+            ob = env.reset()
+            done = False
+            print('Episode number ', episode)
+            episode_reward = 0
+
+            while not done:
+
+                act = "recording"
+                new_ob, reward, done, action = env.step(act)
+
+                ind = [0, 1, 2, 18, 21, 24]
+                # ind = [0, 1, 2]
+                print(ob[ind])
+
+
+                obs.append(ob)
+                actions.append(action)
+                rewards.append(reward)
+                dones.append(done)
+                episode_reward = episode_reward + reward
+
+                ob = new_ob
+
+            episode_rewards.append(episode_reward)
+
+
+
+        data_saver(obs, actions, rewards, dones, episode_rewards)
 
     elif job == 'play':
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_53_rew_24383.0', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_25_25_14_15', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
-        for _ in range(4):
+        for _ in range(2):
 
             obs = env.reset()
             done = False
