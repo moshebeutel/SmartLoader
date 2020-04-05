@@ -148,25 +148,25 @@ def main():
         # pretrain
         if pretrain:
             # load dataset only once
-            # expert_dataset('3_rocks_80_episodes')
+            # expert_dataset('3_rocks_40_episodes')
             dataset = ExpertDataset(expert_path=(os.getcwd() + '/dataset.npz'), traj_limitation=-1)
-            model.pretrain(dataset, n_epochs=5000)
+            model.pretrain(dataset, n_epochs=2000)
 
         # Test the pre-trained model
-        env = model.get_env()
-        obs = env.reset()
-
-        reward_sum = 0.0
-        for _ in range(1000):
-            action, _ = model.predict(obs)
-            obs, reward, done, _ = env.step(action)
-            reward_sum += reward
-            if done:
-                print(reward_sum)
-                reward_sum = 0.0
-                obs = env.reset()
-
-        env.close()
+        # env = model.get_env()
+        # obs = env.reset()
+        #
+        # reward_sum = 0.0
+        # for _ in range(1000):
+        #     action, _ = model.predict(obs)
+        #     obs, reward, done, _ = env.step(action)
+        #     reward_sum += reward
+        #     if done:
+        #         print(reward_sum)
+        #         reward_sum = 0.0
+        #         obs = env.reset()
+        #
+        # env.close()
 
         # learn
         model.learn(total_timesteps=num_timesteps, callback=save_fn)
