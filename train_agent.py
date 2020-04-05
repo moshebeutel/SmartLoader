@@ -4,8 +4,8 @@ import os
 from stable_baselines.sac.policies import MlpPolicy as sac_MlpPolicy
 from stable_baselines.ddpg.policies import MlpPolicy as ddpg_MlpPolicy
 from stable_baselines.common.policies import MlpPolicy as Common_MlpPolicy
-
 from stable_baselines.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, AdaptiveParamNoiseSpec
+from stable_baselines.gail import ExpertDataset
 from stable_baselines import TRPO
 from stable_baselines import DDPG
 from stable_baselines import PPO1
@@ -16,6 +16,8 @@ import gym
 import gym_SmartLoader.envs
 import time
 import numpy as np
+from typing import Dict
+from tempfile import TemporaryFile
 
 n_steps = 0
 save_interval = 2000
@@ -39,50 +41,74 @@ def save_fn(_locals, _globals):
     n_steps += 1
     pass
 
+def expert_dataset(name):
+    # Benny's recordings to dict
+    path = os.getcwd() + '/' + name
+    numpy_dict = {
+        'actions': np.load(path + '/act.npy'),
+        'obs': np.load(path + '/obs.npy'),
+        'rewards': np.load(path + '/rew.npy'),
+        'episode_returns': np.load(path + '/ep_ret.npy'),
+        'episode_starts': np.load(path + '/ep_str.npy')
+    } # type: Dict[str, np.ndarray]
+
+    # for key, val in numpy_dict.items():
+    #     print(key, val.shape)
+
+    # dataset = TemporaryFile()
+    save_path = os.getcwd() + '/dataset'
+    os.makedirs(save_path)
+    np.savez(save_path, **numpy_dict)
+
 
 def main():
     global model, best_model_path, last_model_path
     mission = 'PushStonesEnv' # Change according to algorithm
     env = gym.make(mission + '-v0').unwrapped
-    train_model = True
+    jobs = ['train', 'play']
+    job = jobs[0]
+    pretrain = True
 
     # Create log and model dir
-    dir = 'stable_bl/' + mission
+    # dir = 'stable_bl/' + mission
+    dir = 'stable_bl/PushMultipleStones'
     os.makedirs(dir + '/model_dir/sac', exist_ok=True)
 
-    if train_model:
+    if job == 'train':
         # create new folder
-        # try:
-        tests = os.listdir(dir + '/model_dir/sac')
-        indexes = []
-        for item in tests:
-            indexes.append(int(item.split('_')[1]))
-        k = max(indexes) + 1
-
-        # except FileNotFoundError:
-        #     os.makedirs(dir + '/log_dir/sac')
-        #     k = 0
+        try:
+            tests = os.listdir(dir + '/model_dir/sac')
+            indexes = []
+            for item in tests:
+                indexes.append(int(item.split('_')[1]))
+            if not bool(indexes):
+                k = 0
+            else:
+                k = max(indexes) + 1
+        except FileNotFoundError:
+            os.makedirs(dir + '/log_dir/sac')
+            k = 0
 
         model_dir = os.getcwd() + '/' + dir + '/model_dir/sac/test_{}'.format(str(k))
 
         best_model_path = model_dir
         last_model_path = model_dir
 
-        num_timesteps = int(3e5)
-
-        policy_kwargs = dict(layers=[64, 64, 64])
-
         log_dir = dir + '/log_dir/sac/test_{}'.format(str(k))
         logger.configure(folder=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
 
+        num_timesteps = int(1e6)
+
+        policy_kwargs = dict(layers=[64, 64, 64])
+
         # SAC - start learning from scratch
-        # model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
-        #      learning_starts=3000, train_freq=1, batch_size=64,
-        #      tau=0.01, ent_coef='auto', target_update_interval=1,
-        #      gradient_steps=1, target_entropy='auto', action_noise=None,
-        #      random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
-        #      _init_setup_model=True, full_tensorboard_log=True,
-        #      seed=None, n_cpu_tf_sess=None)
+        model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
+             learning_starts=0, train_freq=1, batch_size=64,
+             tau=0.01, ent_coef='auto', target_update_interval=1,
+             gradient_steps=1, target_entropy='auto', action_noise=None,
+             random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
+             _init_setup_model=True, full_tensorboard_log=True,
+             seed=None, n_cpu_tf_sess=None)
 
         # Load best model and continue learning
         # models = os.listdir(dir + '/model_dir/sac')
@@ -113,11 +139,34 @@ def main():
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
 
-        model = SAC.load(dir + '/model_dir/sac/test_49_rew_21922.7',
-                         env=env, tensorboard_log=log_dir,
-                         custom_objects=dict(learning_starts=0, learning_rate=4e-4,
-                                             train_freq=1, gradient_steps=1, target_update_interval=1))
-                                             # batch_size=32))
+        # model = SAC.load(dir + '/model_dir/sac/test_53_rew_24383.0',
+        #                  env=env, tensorboard_log=log_dir,
+        #                  custom_objects=dict(learning_starts=0, learning_rate=2e-4,
+        #                                      train_freq=8, gradient_steps=4, target_update_interval=4))
+        # #                                              # batch_size=32))
+
+        # pretrain
+        if pretrain:
+            # load dataset only once
+            # expert_dataset('3_rocks_80_episodes')
+            dataset = ExpertDataset(expert_path=(os.getcwd() + '/dataset.npz'), traj_limitation=-1)
+            model.pretrain(dataset, n_epochs=5000)
+
+        # Test the pre-trained model
+        env = model.get_env()
+        obs = env.reset()
+
+        reward_sum = 0.0
+        for _ in range(1000):
+            action, _ = model.predict(obs)
+            obs, reward, done, _ = env.step(action)
+            reward_sum += reward
+            if done:
+                print(reward_sum)
+                reward_sum = 0.0
+                obs = env.reset()
+
+        env.close()
 
         # learn
         model.learn(total_timesteps=num_timesteps, callback=save_fn)
@@ -133,9 +182,10 @@ def main():
         # model.learn(total_timesteps=500000)
         # model.save(log_dir)
 
-    else:
+
+    elif job == 'play':
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_41_31_11_50', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_53_rew_24383.0', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
         for _ in range(4):
 
