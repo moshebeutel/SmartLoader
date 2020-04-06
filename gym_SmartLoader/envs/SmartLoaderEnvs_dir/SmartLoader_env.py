@@ -348,6 +348,7 @@ class BaseEnv(gym.Env):
         self.stones = {}
         self.steps = 0
         self.total_reward = 0
+        self.boarders = []
 
         # initial state depends on environment (mission)
         self.init_env()
@@ -355,11 +356,11 @@ class BaseEnv(gym.Env):
         # wait for simulation to set up
         while True: # wait for all topics to arrive
             # change to 2*numStones when IsLoaded is fixed
-            if bool(self.world_state) and bool(self.stones): # and len(self.stones) >= self.numStones:
+            if bool(self.world_state) and bool(self.stones) and len(self.stones) == self.numStones + 1:
                 break
 
         # wait for simulation to stabilize, stones stop moving
-        time.sleep(3)
+        time.sleep(5)
 
         # For boarders limit
         # for NUM STONES = 1 - with regards to stone
@@ -380,7 +381,7 @@ class BaseEnv(gym.Env):
         #     self.blade_down()
 
         # get observation from simulation
-        obs = self._current_obs() # without waiting for obs to updated
+        obs = self.current_obs() # without waiting for obs to updated
 
         self.init_dis = np.sqrt(np.sum(np.power(obs[0:3], 2)))
 
@@ -430,6 +431,8 @@ class BaseEnv(gym.Env):
         self.total_reward = self.total_reward + step_reward
 
         if done:
+            self.world_state = {}
+            self.stones = {}
             print('stone to desired distance =', self.init_dis, ', total reward = ', self.total_reward)
 
         info = {"state": obs, "action": action, "reward": self.total_reward, "step": self.steps, "reset reason": reset}
@@ -476,6 +479,9 @@ class BaseEnv(gym.Env):
         # check if vehicle is out of scene boarders
         boarders = self.boarders
         curr_vehicle_pose = np.copy(self.world_state['VehiclePos'])
+
+        # print('boarders = ', boarders)
+        # print('curr vehicle pose = ', curr_vehicle_pose)
 
         # if self.steps < 2:
         #     print(boarders)
@@ -809,7 +815,7 @@ class PushStonesEnv(BaseEnv):
 
         dis = []
         for stone in range(1, self.numStones + 1):
-            current_pos = self.stones['StonePos' + str(stone)][0:2]
+            current_pos = self.stones['StonePos' + str(stone)][0:2] - self.stone_ref[0:2]
             dis.append(np.linalg.norm(current_pos))
 
         return dis

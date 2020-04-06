@@ -41,11 +41,11 @@ def save_fn(_locals, _globals):
     pass
 
 
-def data_saver(obs, actions, step_rewards, dones, episode_rewards):
+def data_saver(obs, act, rew, dones, ep_rew):
 
     np.save('/home/graphics/git/SmartLoader/saved_ep/obs', obs)
-    np.save('/home/graphics/git/SmartLoader/saved_ep/actions', act)
-    np.save('/home/graphics/git/SmartLoader/saved_ep/rewards', rew)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/act', act)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/rew', rew)
 
     starts = [False] * len(dones)
     starts[0] = True
@@ -54,8 +54,8 @@ def data_saver(obs, actions, step_rewards, dones, episode_rewards):
         if dones[i]:
             starts[i + 1] = True
 
-    np.save('/home/graphics/git/SmartLoader/saved_ep/episode_starts', ep_str)
-    np.save('/home/graphics/git/SmartLoader/saved_ep/episode_returns', ep_rew)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/ep_str', ep_str)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/ep_ret', ep_rew)
 
 def main():
     global model, best_model_path, last_model_path
@@ -63,7 +63,7 @@ def main():
 
     jobs = ['train', 'record', 'BC_agent' , 'play']
 
-    job = jobs[0]
+    job = jobs[1]
 
     # Create log and model dir
 
@@ -183,7 +183,7 @@ def main():
         mission = 'PushStonesEnv'
         env = gym.make(mission + '-v0').unwrapped
 
-        num_episodes = 40
+        num_episodes = 10
 
         obs = []
         actions = []
@@ -203,10 +203,9 @@ def main():
                 act = "recording"
                 new_ob, reward, done, action = env.step(act)
 
-                ind = [0, 1, 2, 18, 21, 24]
-                # ind = [0, 1, 2]
-                print(ob[ind])
-
+                # ind = [0, 1, 2, 18, 21, 24]
+                ind = [0, 1, 2]
+                # print(ob)
 
                 obs.append(ob)
                 actions.append(action)
