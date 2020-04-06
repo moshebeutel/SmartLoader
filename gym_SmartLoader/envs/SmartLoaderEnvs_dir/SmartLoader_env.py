@@ -348,6 +348,7 @@ class BaseEnv(gym.Env):
         self.stones = {}
         self.steps = 0
         self.total_reward = 0
+        self.boarders = []
 
         # initial state depends on environment (mission)
         self.init_env()
@@ -380,7 +381,7 @@ class BaseEnv(gym.Env):
         #     self.blade_down()
 
         # get observation from simulation
-        obs = self._current_obs() # without waiting for obs to updated
+        obs = self.current_obs() # without waiting for obs to updated
 
         self.init_dis = np.sqrt(np.sum(np.power(obs[0:3], 2)))
 
@@ -478,6 +479,9 @@ class BaseEnv(gym.Env):
         # check if vehicle is out of scene boarders
         boarders = self.boarders
         curr_vehicle_pose = np.copy(self.world_state['VehiclePos'])
+
+        # print('boarders = ', boarders)
+        # print('curr vehicle pose = ', curr_vehicle_pose)
 
         # if self.steps < 2:
         #     print(boarders)

@@ -46,18 +46,18 @@ def save_fn(_locals, _globals):
 def data_saver(obs, act, rew, dones, ep_rew):
 
     np.save('/home/graphics/git/SmartLoader/saved_ep/obs', obs)
-    np.save('/home/graphics/git/SmartLoader/saved_ep/actions', act)
-    np.save('/home/graphics/git/SmartLoader/saved_ep/rewards', rew)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/act', act)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/rew', rew)
 
-    starts = [False] * len(dones)
-    starts[0] = True
+    ep_str = [False] * len(dones)
+    ep_str[0] = True
 
     for i in range(len(dones) - 1):
         if dones[i]:
-            starts[i + 1] = True
+            ep_str[i + 1] = True
 
-    np.save('/home/graphics/git/SmartLoader/saved_ep/episode_starts', starts)
-    np.save('/home/graphics/git/SmartLoader/saved_ep/episode_returns', ep_rew)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/ep_str', ep_str)
+    np.save('/home/graphics/git/SmartLoader/saved_ep/ep_ret', ep_rew)
 
 
 def expert_dataset(name):
@@ -79,6 +79,7 @@ def expert_dataset(name):
     os.makedirs(save_path)
     np.savez(save_path, **numpy_dict)
 
+
 def main():
     global model, best_model_path, last_model_path
     mission = 'PushStonesEnv' # Change according to algorithm
@@ -92,8 +93,6 @@ def main():
     jobs = ['train', 'record', 'BC_agent', 'play']
     job = jobs[0]
     pretrain = True
-
-    # Create log and model dir
 
     if job == 'train':
 
@@ -210,7 +209,7 @@ def main():
         mission = 'PushStonesEnv'
         env = gym.make(mission + '-v0').unwrapped
 
-        num_episodes = 40
+        num_episodes = 10
 
         obs = []
         actions = []
@@ -230,10 +229,9 @@ def main():
                 act = "recording"
                 new_ob, reward, done, action = env.step(act)
 
-                ind = [0, 1, 2, 18, 21, 24]
-                # ind = [0, 1, 2]
-                print(ob[ind])
-
+                # ind = [0, 1, 2, 18, 21, 24]
+                ind = [0, 1, 2]
+                # print(ob)
 
                 obs.append(ob)
                 actions.append(action)
