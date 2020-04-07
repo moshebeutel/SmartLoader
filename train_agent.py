@@ -82,17 +82,17 @@ def expert_dataset(name):
 
 def main():
     global model, best_model_path, last_model_path
-    mission = 'PushStonesEnv' # Change according to algorithm
+    mission = 'PickUpEnv' # Change according to algorithm
     env = gym.make(mission + '-v0').unwrapped
 
     # Create log and model dir
-    # dir = 'stable_bl/' + mission
-    dir = 'stable_bl/PushMultipleStones'
+    dir = 'stable_bl/' + mission
+    # dir = 'stable_bl/PushMultipleStones'
     os.makedirs(dir + '/model_dir/sac', exist_ok=True)
 
     jobs = ['train', 'record', 'BC_agent', 'play']
     job = jobs[0]
-    pretrain = True
+    pretrain = False
 
     if job == 'train':
 
@@ -160,7 +160,7 @@ def main():
         # model = SAC.load(dir + '/model_dir/sac/test_' + k + '_' + date + '_' + latest_hour[0] + '_' + latest_min + 'zip',
         #                  env=env, custom_objects=dict(learning_starts=0))
 
-        # model = SAC.load(dir + '/model_dir/sac/test_53_rew_24383.0',
+        # model = SAC.load(dir + '/model_dir/sac/test_54_rew_41340.0',
         #                  env=env, tensorboard_log=log_dir,
         #                  custom_objects=dict(learning_starts=0, learning_rate=2e-4,
         #                                      train_freq=8, gradient_steps=4, target_update_interval=4))
@@ -249,9 +249,9 @@ def main():
 
     elif job == 'play':
         # env = gym.make('PickUpEnv-v0')
-        model = SAC.load(dir + '/model_dir/sac/test_25_25_14_15', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
+        model = SAC.load(dir + '/model_dir/sac/test_54_rew_41340.0', env=env, custom_objects=dict(learning_starts=0)) ### ADD NUM
 
-        for _ in range(2):
+        for _ in range(5):
 
             obs = env.reset()
             done = False
