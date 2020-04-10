@@ -335,8 +335,9 @@ class BaseEnv(gym.Env):
             self.episode.killSimulation()
 
         self.episode = EpisodeManager()
+        self.episode.generateAndRunWholeEpisode(typeOfRand="recorder")
         # self.episode.generateAndRunWholeEpisode(typeOfRand="verybasic") # for NUM_STONES = 1
-        self.episode.generateAndRunWholeEpisode(typeOfRand="MultipleRocks", numstones=self.numStones)
+        # self.episode.generateAndRunWholeEpisode(typeOfRand="MultipleRocks", numstones=self.numStones)
         self.simOn = True
 
     def reset(self):
@@ -356,7 +357,7 @@ class BaseEnv(gym.Env):
         # wait for simulation to set up
         while True: # wait for all topics to arrive
             # change to 2*numStones when IsLoaded is fixed
-            if bool(self.world_state) and bool(self.stones) and len(self.stones) == self.numStones + 1:
+            if bool(self.world_state) and bool(self.stones) and len(self.stones) == self.numStones+ 1:
                 break
 
         # wait for simulation to stabilize, stones stop moving
@@ -690,7 +691,7 @@ class MoveWithStonesEnv(BaseEnv):
 
 
 class PushStonesEnv(BaseEnv):
-    def __init__(self, numStones=3):
+    def __init__(self, numStones=1):
         BaseEnv.__init__(self, numStones)
 
         # self._prev_mean_sqr_blade_dis = 9

@@ -36,10 +36,6 @@ ALGOS = {
     'gail': GAIL
 }
 
-n_steps = 0
-save_interval = 2000
-best_mean_reward = -np.inf
-
 def expert_dataset(name):
     # Benny's recordings to dict
     path = os.getcwd() + '/' + name
@@ -63,6 +59,7 @@ class ExpertDatasetLoader:
     dataset = None
     def __call__(self, force_load=False):
         if dataset is None or force_load:
+            print('loading expert dataset')
             dataset = ExpertDataset(expert_path=(os.getcwd() + '/dataset.npz'), traj_limitation=-1)
         return dataset
 
@@ -134,38 +131,22 @@ class ExpertDatasetLoader:
 class CheckEvalCallback(BaseCallback):
     """
     A custom callback that checks agent's evaluation every predefined number of steps.
-
+    :param model_dir: (str) directory path for model save
     :param verbose: (int) Verbosity level 0: not output 1: info 2: debug
+    :param save_interval: (int) Number of timestamps between best mean model saves
     """
-    def __init__(self, verbose=0):
+    def __init__(self, model_dir, verbose=0,  save_interval = 2000):
         super(CheckEvalCallback, self).__init__(verbose)
-        self._rollout_num = 0
-        self._training_num = 0
-        self._step_num = 0
-        # Those variables will be accessible in the callback
-        # (they are defined in the base class)
-        # The RL model
-        # self.model = None  # type: BaseRLModel
-        # An alias for self.model.get_env(), the environment used for training
-        # self.training_env = None  # type: Union[gym.Env, VecEnv, None]
-        # Number of time the callback was called
-        # self.n_calls = 0  # type: int
-        # self.num_timesteps = 0  # type: int
-        # local and global variables
-        # self.locals = None  # type: Dict[str, Any]
-        # self.globals = None  # type: Dict[str, Any]
-        # The logger object, used to report things in the terminal
-        # self.logger = None  # type: logger.Logger
-        # # Sometimes, for event callback, it is useful
-        # # to have access to the parent object
-        # self.parent = None  # type: Optional[BaseCallback]
+        self._best_model_path = model_dir
+        self._last_model_path = model_dir
+        self._best_mean_reward = -np.inf
+        self._save_interval = save_interval
 
     def _on_training_start(self) -> None:
         """
         This method is called before the first rollout starts.
         """
-        self._training_num += 1
-        print('_on_training_start', self._training_num)
+        print('_on_training_start')
 
     def _on_rollout_start(self) -> None:
         """
@@ -173,8 +154,7 @@ class CheckEvalCallback(BaseCallback):
         using the current policy.
         This event is triggered before collecting new samples.
         """
-        self._rollout_num += 1
-        print('_on_rollout_start', self._rollout_num)
+        print('_on_rollout_start')
 
     def _on_step(self) -> bool:
         """
@@ -185,41 +165,40 @@ class CheckEvalCallback(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        self._step_num += 1
-        print("_on_step", self._step_num)
+
+        print("_on_step", self.num_timesteps)
+
+        if (self.num_timesteps + 1) % self._save_interval == 0:
+            # Evaluate policy training performance
+            mean_reward = round(float(np.mean(self.locals['episode_rewards'][-101:-1])), 1)
+            print(self.num_timesteps + 1, 'timesteps')
+            print("Best mean reward: {:.2f} - Last mean reward: {:.2f}".format(best_mean_reward, mean_reward))
+            # New best model, save the agent
+            if mean_reward > self._best_mean_reward:
+                self._best_mean_reward = mean_reward
+                print("Saving new best model")
+                self.model.save(self._best_model_path + '_rew_' + str(np.round(self._best_mean_reward, 2)))
+            path = self._last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(time.localtime().tm_min)
+            self.model.save(path)
         return True
 
     def _on_rollout_end(self) -> None:
         """
         This event is triggered before updating the policy.
         """
-        print('_on_rollout_end', self._rollout_num)
+        print('_on_rollout_end')
+        print('locals',self.locals)
+        print('globals', self.globals)
+        print('n_calls', self.n_calls)
+        print('num_timesteps', self.num_timesteps)
+        print('training_env', self.training_env)
 
     def _on_training_end(self) -> None:
         """
         This event is triggered before exiting the `learn()` method.
         """
-        print('_on_training_end', self._training_num)
+        print('_on_training_end')
 
-def save_fn(_locals, _globals):
-    global model, n_steps, best_mean_reward, best_model_path, last_model_path
-
-    if (n_steps + 1) % save_interval == 0:
-
-        # Evaluate policy training performance
-        mean_reward = round(float(np.mean(_locals['episode_rewards'][-101:-1])), 1)
-        print(n_steps + 1, 'timesteps')
-        print("Best mean reward: {:.2f} - Last mean reward: {:.2f}".format(best_mean_reward, mean_reward))
-        # New best model, save the agent
-        if mean_reward > best_mean_reward:
-            best_mean_reward = mean_reward
-            print("Saving new best model")
-            model.save(best_model_path + '_rew_' + str(np.round(best_mean_reward, 2)))
-        model.save(
-            last_model_path + '_' + str(time.localtime().tm_mday) + '_' + str(time.localtime().tm_hour) + '_' + str(
-                time.localtime().tm_min))
-    n_steps += 1
-    pass
 
 def data_saver(obs, act, rew, dones, ep_rew):
     np.save('/home/graphics/git/SmartLoader/saved_ep/obs', obs)
@@ -249,7 +228,7 @@ def build_model(algo, env, env_name, log_dir, expert_dataset=None):
     model = None
     if algo == 'sac':
         model = SAC(sac_MlpPolicy, env, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
-                    learning_starts=0, train_freq=1000, batch_size=64,
+                    learning_starts=0, train_freq=100, batch_size=64,
                     tau=0.01, ent_coef='auto', target_update_interval=1,
                     gradient_steps=1, target_entropy='auto', action_noise=None,
                     random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
@@ -326,7 +305,6 @@ def play(dir, env):
             # print('state: ', obs[0:3], 'action: ', action)
 
 def train(args, dir, env, env_name):
-    global best_model_path, last_model_path, model
     # create new folder
     try:
         tests = os.listdir(dir + '/model_dir/sac')
@@ -341,16 +319,12 @@ def train(args, dir, env, env_name):
         os.makedirs(dir + '/log_dir/sac')
         k = 0
     model_dir = os.getcwd() + '/' + dir + '/model_dir/sac/test_{}'.format(str(k))
-    best_model_path = model_dir
-    last_model_path = model_dir
     log_dir = dir + '/log_dir/sac/test_{}'.format(str(k))
     logger.configure(folder=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
     print('log directory created', log_dir)
     policy_kwargs = dict(layers=[64, 64, 64])
-    if args.pretrain or args.algo == 'gail':
-        print('loading expert dataset')
-        dataset = ExpertDatasetLoader()
-    model = build_model(algo=args.algo, env=env, env_name=env_name, dataset=dataset if dataset in locals() else None)
+    dataset = ExpertDatasetLoader() if args.pretrain or args.algo == 'gail' else None
+    model = build_model(algo=args.algo, env=env, env_name=env_name, log_dir=log_dir, expert_dataset=dataset)
     if args.pretrain:
         pretrain_model(dataset, model)
     # Load best model and continue learning
@@ -401,15 +375,14 @@ def train(args, dir, env, env_name):
     #         obs = env.reset()
     #
     # env.close()
+
     # learn
     print("learning model type", type(model))
-    # model.learn(total_timesteps=args.n_timesteps, callback=save_fn)
-    eval_callback = CheckEvalCallback()
+    eval_callback = CheckEvalCallback(model_dir)
     model.learn(total_timesteps=args.n_timesteps, callback=eval_callback)
     model.save(env_name)
 
 def main(args):
-    global model, best_model_path, last_model_path
     mission = 'PushStonesEnv'  # Change according to algorithm
     # mission = 'PushMultipleStones'
     env_name = mission + '-v0'
@@ -428,7 +401,6 @@ def main(args):
         record()
     elif job == 'play':
         play(dir, env)
-
 
 def add_arguments(parser):
     parser.add_argument('--env', type=str, default="PushStonesEnv", help='environment ID')
@@ -454,7 +426,6 @@ def add_arguments(parser):
     #                     help='Ensure that the run has a unique ID')
     # parser.add_argument('--env-kwargs', type=str, nargs='+', action=StoreDict,
     #                     help='Optional keyword argument to pass to the env constructor')
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
