@@ -172,7 +172,7 @@ class CheckEvalCallback(BaseCallback):
             # Evaluate policy training performance
             mean_reward = round(float(np.mean(self.locals['episode_rewards'][-101:-1])), 1)
             print(self.num_timesteps + 1, 'timesteps')
-            print("Best mean reward: {:.2f} - Last mean reward: {:.2f}".format(best_mean_reward, mean_reward))
+            print("Best mean reward: {:.2f} - Last mean reward: {:.2f}".format(self._best_mean_reward, mean_reward))
             # New best model, save the agent
             if mean_reward > self._best_mean_reward:
                 self._best_mean_reward = mean_reward
