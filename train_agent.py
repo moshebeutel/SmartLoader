@@ -51,15 +51,14 @@ def expert_dataset(name):
     os.makedirs(save_path)
     np.savez(save_path, **numpy_dict)
 
-
 class ExpertDatasetLoader:
     dataset = None
 
     def __call__(self, force_load=False):
-        if dataset is None or force_load:
+        if ExpertDatasetLoader.dataset is None or force_load:
             print('loading expert dataset')
-            dataset = ExpertDataset(expert_path=(os.getcwd() + '/dataset.npz'), traj_limitation=-1)
-        return dataset
+            ExpertDatasetLoader.dataset = ExpertDataset(expert_path=(os.getcwd() + '/dataset.npz'), traj_limitation=-1)
+        return ExpertDatasetLoader.dataset
 
 class CheckEvalCallback(BaseCallback):
     """
@@ -99,8 +98,6 @@ class CheckEvalCallback(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-
-        print("_on_step", self.num_timesteps)
 
         if (self.num_timesteps + 1) % self._save_interval == 0:
             # Evaluate policy training performance
@@ -162,10 +159,11 @@ def build_model(algo, env_name, log_dir, expert_dataset=None):
     """
     model = None
     if algo == 'sac':
-        policy_kwargs = dict(layers=[128, 128, 128],layer_norm=False)
+        policy_kwargs = dict(layers=[64, 64, 64],layer_norm=False)
+
         model = SAC('MlpPolicy', env_name, gamma=0.99, learning_rate=1e-4, buffer_size=500000,
-                    learning_starts=0, train_freq=100, batch_size=64, policy_kwargs=policy_kwargs,
-                    tau=0.01, ent_coef='auto', target_update_interval=1,
+                    learning_starts=5000, train_freq=500, batch_size=64, policy_kwargs=policy_kwargs,
+                    tau=0.01, ent_coef='auto_0.1', target_update_interval=1,
                     gradient_steps=1, target_entropy='auto', action_noise=None,
                     random_exploration=0.0, verbose=2, tensorboard_log=log_dir,
                     _init_setup_model=True, full_tensorboard_log=True,

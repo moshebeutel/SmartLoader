@@ -390,6 +390,8 @@ class BaseEnv(gym.Env):
 
         self.joycon = 'waiting'
 
+        self.MAX_STEPS = 20 * self.init_dis
+
         return obs
 
 
@@ -693,7 +695,7 @@ class MoveWithStonesEnv(BaseEnv):
 class PushStonesEnv(BaseEnv):
     def __init__(self, numStones=1):
         BaseEnv.__init__(self, numStones)
-
+        self.MAX_STEPS = 0
         # self._prev_mean_sqr_blade_dis = 9
         self._prev_mean_sqr_stone_dis = 16
 
@@ -702,21 +704,22 @@ class PushStonesEnv(BaseEnv):
         # reward per step
         reward = 0
 
-        # reward for getting the blade closer to stone
-        # BLADE_CLOSER = 0.1
+        # negative reward for distance from blade to stone
+        BLADE_CLOSER = -0.1
         # mean_sqr_blade_dis = np.mean(self.sqr_dis_blade_stone())
-        # # reward = BLADE_CLOSER / mean_sqr_blade_dis
-        # reward = BLADE_CLOSER * (self._prev_mean_sqr_blade_dis - mean_sqr_blade_dis)
+        # reward = BLADE_CLOSER / mean_sqr_blade_dis
+        # reward = BLADE_CLOSER * (self._prev_mean_sqr_blade_dis - mean_sqr_blade_dis)/ self.MAX_STEPS
+        reward = BLADE_CLOSER * self.sqr_dis_blade_one_stone()/ self.MAX_STEPS
 
-        # reward for getting the stone closer to target
-        STONE_CLOSER = 1
+        # negative reward for distance from stone to target
+        STONE_CLOSER = -1
         mean_sqr_stone_dis = np.mean(np.power(self.dis_stone_desired_pose(), 2))
         # reward += STONE_CLOSER / mean_sqr_stone_dis
-        reward += STONE_CLOSER * (self._prev_mean_sqr_stone_dis - mean_sqr_stone_dis)
+        reward += STONE_CLOSER * mean_sqr_stone_dis / self.MAX_STEPS
 
         # update prevs
         # self._prev_mean_sqr_blade_dis = mean_sqr_blade_dis
-        self._prev_mean_sqr_stone_dis = mean_sqr_stone_dis
+        # self._prev_mean_sqr_stone_dis = mean_sqr_stone_dis
 
         # STONE_CLOSER = 0.1
         # diff_from_init_dis = self.init_dis_stone_desired_pose - np.mean(self.sqr_dis_stone_desired_pose())
@@ -779,17 +782,17 @@ class PushStonesEnv(BaseEnv):
         reset = 'No'
         final_reward = 0
 
-        FINAL_REWARD = 5000
+        FINAL_REWARD = 1
         if self.out_of_boarders():
             done = True
             reset = 'out of boarders'
             print('----------------', reset, '----------------')
-            final_reward = - FINAL_REWARD
+            # final_reward = - FINAL_REWARD
             self.episode.killSimulation()
             self.simOn = False
 
-        MAX_STEPS = 200*self.init_dis
-        if self.steps > MAX_STEPS:
+
+        if self.steps > self.MAX_STEPS:
             done = True
             reset = 'limit time steps'
             print('----------------', reset, '----------------')
@@ -801,8 +804,8 @@ class PushStonesEnv(BaseEnv):
             done = True
             reset = 'sim success'
             print('----------------', reset, '----------------')
-            final_reward = FINAL_REWARD*MAX_STEPS/self.steps
-            # final_reward = FINAL_REWARD
+            # final_reward = FINAL_REWARD*MAX_STEPS/self.steps
+            final_reward = FINAL_REWARD
             # print('----------------', str(final_reward), '----------------')
             self.episode.killSimulation()
             self.simOn = False
@@ -844,13 +847,13 @@ class PushStonesEnv(BaseEnv):
     #
     #     return success
 
-    # def blade_pose(self):
-    #     L = 0.75 # distance from center of vehicle to blade BOBCAT
-    #     r = R.from_quat(self.world_state['VehicleOrien'])
-    #
-    #     blade_pose = self.world_state['VehiclePos'] + L*r.as_rotvec()
-    #
-    #     return blade_pose
+    def blade_pose(self):
+        L = 0.75 # distance from center of vehicle to blade BOBCAT
+        r = R.from_quat(self.world_state['VehicleOrien'])
+
+        blade_pose = self.world_state['VehiclePos'] + L*r.as_rotvec()
+
+        return blade_pose
 
     # def stone_optimal_pose(self):
     #     # using current blade to stone distance to calc optimal position of stone for pushing from the middle of the blade
@@ -880,21 +883,21 @@ class PushStonesEnv(BaseEnv):
     #
     #     return sqr_dis
 
-    # def sqr_dis_blade_one_stone(self):
-    #     # for number of stones = 1
-    #     blade_pose = self.blade_pose()[0:2]
-    #     stone_pose = self.stones['StonePos1'][0:2]
-    #     sqr_dis = self.squared_dis(blade_pose, stone_pose)
-    #
-    #     return sqr_dis
-    #
-    # def squared_dis(self, p1, p2):
-    #     # calc distance between two points
-    #     # p1,p2 = [x,y]
-    #
-    #     squared_dis = pow(p1[0]-p2[0], 2) + pow(p1[1]-p2[1], 2)
-    #
-    #     return squared_dis
+    def sqr_dis_blade_one_stone(self):
+        # for number of stones = 1
+        blade_pose = self.blade_pose()         # [0:2]  vertical distance counts...
+        stone_pose = self.stones['StonePos1']  # [0:2]  vertical distance counts...
+        sqr_dis = self.squared_dis(blade_pose, stone_pose)
+
+        return sqr_dis
+
+    def squared_dis(self, p1, p2):
+        # calc distance between two 3D points
+        # p1,p2 = [x,y,z]
+
+        squared_dis = pow(p1[0]-p2[0], 2) + pow(p1[1]-p2[1], 2) + pow(p1[2]-p2[2], 2)
+
+        return squared_dis
 
 
 # DEBUG
